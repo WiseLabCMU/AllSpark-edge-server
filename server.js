@@ -1,8 +1,41 @@
 const WebSocket = require("ws");
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 
-const wss = new WebSocket.Server({ port: 8080 });
+const server = http.createServer((req, res) => {
+  // Handle HTTP requests
+  if (req.method === "GET" && req.url === "/") {
+    const htmlFile = path.join(__dirname, "index.html");
+    fs.readFile(htmlFile, "utf8", (err, htmlContent) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("500 - Internal Server Error");
+        console.error("Error reading index.html:", err);
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(htmlContent);
+    });
+  } else if (req.method === "GET" && req.url === "/api/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    const connections = Array.from(uploadStates.entries()).map(([id, state]) => ({
+      id,
+      hasMetadata: state.metadata !== null,
+      filename: state.metadata?.filename || null,
+      receivedData: state.receivedData
+    }));
+    res.end(JSON.stringify({
+      totalConnections: uploadStates.size,
+      connections
+    }));
+  } else {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("404 - Not Found");
+  }
+});
+
+const wss = new WebSocket.Server({ server });
 
 // Store upload state per connection
 const uploadStates = new Map();
@@ -80,6 +113,11 @@ wss.on("connection", function connection(ws) {
             const filepath = path.join("uploads", state.metadata.filename);
             console.log(`File uploaded successfully: ${filepath}`);
             ws.send(JSON.stringify({ status: "success", message: "Video uploaded successfully" }));
+
+            // Reset state for next upload on the same connection
+            state.metadata = null;
+            state.fileStream = null;
+            state.receivedData = false;
           }
         });
       }
@@ -103,4 +141,9 @@ wss.on("connection", function connection(ws) {
     }
     uploadStates.delete(connectionId);
   });
+});
+
+// Start the HTTP server
+server.listen(8080, () => {
+  console.log("Server is running on http://localhost:8080");
 });
