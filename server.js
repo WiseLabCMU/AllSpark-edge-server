@@ -3,6 +3,20 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 
+// Load configuration
+let config;
+try {
+  const configFile = path.join(__dirname, "config.json");
+  const configData = fs.readFileSync(configFile, "utf8");
+  config = JSON.parse(configData);
+} catch (err) {
+  console.error("Failed to load config.json, using defaults:", err);
+  config = {
+    hostname: "localhost",
+    port: 8080
+  };
+}
+
 const server = http.createServer((req, res) => {
   // Handle HTTP requests
   if (req.method === "GET" && req.url === "/") {
@@ -183,6 +197,6 @@ wss.on("connection", function connection(ws) {
 });
 
 // Start the HTTP server
-server.listen(8080, () => {
-  console.log("Server is running on http://localhost:8080");
+server.listen(config.port, config.hostname, () => {
+  console.log(`Server is running on http://${config.hostname}:${config.port}`);
 });
