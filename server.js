@@ -1,3 +1,6 @@
+// quick test:
+// websocat ws://localhost:8080
+
 const WebSocket = require("ws");
 const fs = require("fs");
 const path = require("path");
@@ -31,6 +34,13 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(htmlContent);
     });
+  } else if (req.method === "GET" && req.url === "/api/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    }));
   } else if (req.method === "GET" && req.url === "/api/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     const connections = Array.from(uploadStates.entries()).map(([id, state]) => ({
