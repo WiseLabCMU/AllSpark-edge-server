@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Perceptor Host</title>
+  <title>Perceptor Test Host</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -64,7 +64,7 @@
   </style>
 </head>
 <body>
-  <h1>Perceptor Host Server</h1>
+  <h1>Perceptor Test Host Server</h1>
   <div class="status">
     <strong>✓ Server is running</strong>
   </div>
@@ -106,6 +106,9 @@
                 <p>Metadata: ${conn.hasMetadata ? '✓' : '✗'} ${conn.filename ? `(${conn.filename})` : ''}</p>
                 <p>Data Received: ${conn.receivedData ? '✓' : '✗'}</p>
               </div>
+              <button onclick="sendRecordCommand('${conn.id}')" style="margin-top: 10px; padding: 8px 12px; font-size: 14px; cursor: pointer; background-color: #2196f3; color: white; border: none; border-radius: 4px;">
+                Send Record Command
+              </button>
             </div>
           `).join('');
         }
@@ -124,6 +127,31 @@
 
     // Then update every 5 seconds
     setInterval(updateStatus, 5000);
+
+    async function sendRecordCommand(connectionId) {
+      try {
+        const response = await fetch(`/api/command/${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            command: 'record',
+            message: 'Test record command from server'
+          })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          alert(`Command sent to ${connectionId}`);
+        } else {
+          alert('Failed to send command: ' + data.error);
+        }
+      } catch (error) {
+        console.error('Error sending command:', error);
+        alert('Error sending command: ' + error.message);
+      }
+    }
   </script>
 </body>
 </html>

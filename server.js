@@ -29,6 +29,42 @@ const server = http.createServer((req, res) => {
       totalConnections: uploadStates.size,
       connections
     }));
+  } else if (req.method === "POST" && req.url.startsWith("/api/command/")) {
+    const connectionId = req.url.substring("/api/command/".length);
+    const ws = clientConnections.get(connectionId);
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "Connection not found or closed" }));
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body);
+        const message = JSON.stringify({
+          command: data.command,
+          message: data.message || ""
+        });
+
+        ws.send(message, (err) => {
+          if (err) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "Failed to send message" }));
+          } else {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, message: "Command sent" }));
+          }
+        });
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: "Invalid request body" }));
+      }
+    });
   } else {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("404 - Not Found");
@@ -37,8 +73,9 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-// Store upload state per connection
+// Store upload state and WebSocket reference per connection
 const uploadStates = new Map();
+const clientConnections = new Map();
 
 wss.on("connection", function connection(ws) {
   const connectionId = Math.random().toString(36).substr(2, 9);
@@ -47,6 +84,7 @@ wss.on("connection", function connection(ws) {
     fileStream: null,
     receivedData: false
   });
+  clientConnections.set(connectionId, ws);
 
   ws.on("message", function incoming(message) {
     const state = uploadStates.get(connectionId);
@@ -130,6 +168,7 @@ wss.on("connection", function connection(ws) {
       state.fileStream.destroy();
     }
     uploadStates.delete(connectionId);
+    clientConnections.delete(connectionId);
     console.log("Client disconnected");
   });
 
