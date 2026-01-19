@@ -135,6 +135,7 @@ wss.on("connection", function connection(ws) {
     receivedData: false
   });
   clientConnections.set(connectionId, ws);
+  console.log(`Client connected ${connectionId}`);
 
   ws.on("message", function incoming(message) {
     const state = uploadStates.get(connectionId);
@@ -159,10 +160,26 @@ wss.on("connection", function connection(ws) {
     }
 
     if (isStringMessage) {
-      // First message: metadata as JSON string
+      // First message: metadata or test message as JSON string
       try {
-        state.metadata = JSON.parse(message);
-        console.log(`Received metadata:`, state.metadata);
+        const parsedMessage = JSON.parse(message);
+        console.log(`Received message:`, parsedMessage);
+
+        // Check if this is a test message
+        if (parsedMessage.type === "test") {
+          ws.send(JSON.stringify({ status: "success", message: "Test message received" }));
+          console.log("Test message acknowledged");
+          return;
+        }
+
+        // Otherwise treat as metadata for upload
+        if (parsedMessage.type !== "upload" && !parsedMessage.filename) {
+          ws.send(JSON.stringify({ status: "error", message: "Invalid message format. Expected type: 'upload' or 'test'" }));
+          console.error("Invalid message format");
+          return;
+        }
+
+        state.metadata = parsedMessage;
 
         // Create uploads directory if it doesn't exist
         if (!fs.existsSync("uploads")) {
@@ -178,8 +195,8 @@ wss.on("connection", function connection(ws) {
           ws.send(JSON.stringify({ status: "error", message: "Failed to write file" }));
         });
       } catch (err) {
-        console.error("Failed to parse metadata:", err);
-        ws.send(JSON.stringify({ status: "error", message: "Invalid metadata format" }));
+        console.error("Failed to parse message:", err);
+        ws.send(JSON.stringify({ status: "error", message: "Invalid JSON format" }));
       }
     } else {
       // Binary video data
@@ -219,7 +236,7 @@ wss.on("connection", function connection(ws) {
     }
     uploadStates.delete(connectionId);
     clientConnections.delete(connectionId);
-    console.log("Client disconnected");
+    console.log(`Client disconnected ${connectionId}`);
   });
 
   ws.on("error", function error(err) {
