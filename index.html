@@ -70,7 +70,8 @@
   </div>
   <div class="info">
     <h2>WebSocket Connection</h2>
-    <p>The server is ready to accept WebSocket connections at <code>ws://localhost:8080</code></p>
+    <p>The server is ready to accept WebSocket connections at <code id="ws-url">ws://localhost:8080</code></p>
+    <p>Supported protocols: <strong id="protocols-status">Loading...</strong></p>
     <p>This server accepts video file uploads via WebSocket with the following protocol:</p>
     <ol>
       <li>Send metadata as JSON: <code>{"filename": "video.mp4"}</code></li>
@@ -86,6 +87,28 @@
   </div>
 
   <script>
+    async function updateProtocolStatus() {
+      try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+
+        if (data.protocols && data.protocols.length > 0) {
+          const protocolsText = data.protocols.map(p => p.toUpperCase()).join(' & ');
+          document.getElementById('protocols-status').textContent = protocolsText;
+
+          // Update the WebSocket URL based on protocol
+          const protocol = data.protocols[0];
+          const hostname = window.location.hostname || 'localhost';
+          const port = window.location.port || 8080;
+          const wsUrl = `${protocol}://${hostname}:${port}`;
+          document.getElementById('ws-url').textContent = wsUrl;
+        }
+      } catch (error) {
+        console.error('Error fetching protocol status:', error);
+        document.getElementById('protocols-status').textContent = 'Unable to determine';
+      }
+    }
+
     async function updateStatus() {
       try {
         const response = await fetch('/api/status');
@@ -123,6 +146,7 @@
     }
 
     // Update immediately on page load
+    updateProtocolStatus();
     updateStatus();
 
     // Then update every 5 seconds

@@ -2,6 +2,10 @@
 
 This server provides HTTP and WebSocket endpoints for testing perceptor functionality, including video file uploads and remote command execution.
 
+## Requirements
+- Node
+- OpenSSL
+
 ## Configuration
 
 The server reads configuration from `config.json` in the same directory. If the file is not found, defaults are used:
@@ -12,6 +16,41 @@ The server reads configuration from `config.json` in the same directory. If the 
   "port": 8080
 }
 ```
+
+## Testing
+
+1. Generate a testing-only self-signed certificate to secure the websocket transport (you only need to do this once):
+  ```bash
+  mkdir keys
+  openssl req \
+      -new \
+      -newkey rsa:2048 \
+      -days 365 \
+      -nodes \
+      -x509 \
+      -subj "/CN=localhost" \
+      -keyout keys/test-private.key \
+      -out  keys/test-public.crt
+  ```
+
+2. Launch the Perceptor Server Test:
+  ```bash
+  node server.js
+  ```
+
+3. Quick WebSocket test using `websocat`:
+  ```bash
+  websocat --insecure wss://localhost:8080
+  ```
+  or
+  ```bash
+  websocat ws://localhost:8080
+  ```
+
+4. Launch the iOS AllSpark Mobile app, and make sure to use the same port and and IP address in the `Settings` tab of the machine you are running `server.js` on. The `Camera` tab will make the websocket connection automatically. You may need to query your own IP address with something like:
+  ```bash
+  ifconfig | awk '/inet / {sub(/\/.*/, "", $2); print $2}' | tail -1
+  ```
 
 ## HTTP Endpoints
 
@@ -201,13 +240,6 @@ Fired when a WebSocket error occurs.
 ## Upload Directory
 
 Uploaded files are stored in the `uploads/` directory, which is created automatically if it doesn't exist.
-
-## Testing
-
-Quick WebSocket test using `websocat`:
-```bash
-websocat ws://localhost:8080
-```
 
 ## Troubleshooting
 

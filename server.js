@@ -5,9 +5,13 @@ const WebSocket = require("ws");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+const https = require("https");
 
 // Load configuration
 let config;
+let useSSL = false;
+let protocols = ["ws"];
+
 try {
   const configFile = path.join(__dirname, "config.json");
   const configData = fs.readFileSync(configFile, "utf8");
@@ -20,7 +24,28 @@ try {
   };
 }
 
-const server = http.createServer((req, res) => {
+// Try to load SSL certificates if specified in config
+let serverOptions = {};
+if (config.keyFile && config.certFile) {
+  try {
+    const keyPath = path.join(__dirname, config.keyFile);
+    const certPath = path.join(__dirname, config.certFile);
+
+    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+      serverOptions.key = fs.readFileSync(keyPath);
+      serverOptions.cert = fs.readFileSync(certPath);
+      useSSL = true;
+      protocols = ["wss"];
+      console.log("SSL certificates loaded successfully");
+    }
+  } catch (err) {
+    console.warn("Failed to load SSL certificates:", err.message);
+  }
+}
+
+const server = useSSL ? https.createServer(serverOptions, requestHandler) : http.createServer(requestHandler);
+
+function requestHandler(req, res) {
   // Handle HTTP requests
   if (req.method === "GET" && req.url === "/") {
     const htmlFile = path.join(__dirname, "index.html");
@@ -39,7 +64,8 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       status: "ok",
       timestamp: new Date().toISOString(),
-      uptime: process.uptime()
+      uptime: process.uptime(),
+      protocols: protocols
     }));
   } else if (req.method === "GET" && req.url === "/api/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -93,7 +119,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("404 - Not Found");
   }
-});
+}
 
 const wss = new WebSocket.Server({ server });
 
@@ -208,5 +234,7 @@ wss.on("connection", function connection(ws) {
 
 // Start the HTTP server
 server.listen(config.port, config.hostname, () => {
-  console.log(`Server is running on http://${config.hostname}:${config.port}`);
+  const protocol = useSSL ? "https" : "http";
+  console.log(`Server is running on ${protocol}://${config.hostname}:${config.port}`);
+  console.log(`WebSocket endpoint: ${protocols[0]}://${config.hostname}:${config.port}`);
 });

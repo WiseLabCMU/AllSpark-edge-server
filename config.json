@@ -1,4 +1,6 @@
 {
   "hostname": "localhost",
-  "port": 8080
+  "port": 8080,
+  "keyFile": "keys/test-private.key",
+  "certFile": "keys/test-public.crt"
 }
