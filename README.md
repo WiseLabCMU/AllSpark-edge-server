@@ -13,7 +13,10 @@ The server reads configuration from `config.json` in the same directory. If the 
 ```json
 {
   "hostname": "localhost",
-  "port": 8080
+  "port": 8080,
+  "keyFile": "keys/test-private.key",
+  "certFile": "keys/test-public.crt",
+  "uploadPath": "uploads/"
 }
 ```
 

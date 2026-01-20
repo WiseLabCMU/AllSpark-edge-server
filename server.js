@@ -182,12 +182,12 @@ wss.on("connection", function connection(ws) {
         state.metadata = parsedMessage;
 
         // Create uploads directory if it doesn't exist
-        if (!fs.existsSync("uploads")) {
-          fs.mkdirSync("uploads", { recursive: true });
+        if (!fs.existsSync(config.uploadPath)) {
+          fs.mkdirSync(config.uploadPath, { recursive: true });
         }
 
         // Create write stream for the video file
-        const filepath = path.join("uploads", state.metadata.filename);
+        const filepath = path.join(config.uploadPath, state.metadata.filename);
         state.fileStream = fs.createWriteStream(filepath);
 
         state.fileStream.on("error", (err) => {
@@ -215,7 +215,7 @@ wss.on("connection", function connection(ws) {
             state.receivedData = true;
             state.fileStream.end();
 
-            const filepath = path.join("uploads", state.metadata.filename);
+            const filepath = path.join(config.uploadPath, state.metadata.filename);
             console.log(`File uploaded successfully: ${filepath}`);
             ws.send(JSON.stringify({ status: "success", message: "Video uploaded successfully" }));
 
