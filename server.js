@@ -96,12 +96,18 @@ function requestHandler(req, res) {
     req.on("end", () => {
       try {
         const data = JSON.parse(body);
-        const message = JSON.stringify({
+        const message = {
           command: data.command,
           message: data.message || ""
-        });
+        };
 
-        ws.send(message, (err) => {
+        // For record command, optionally include duration (in milliseconds)
+        // If not provided, client will default to 30 seconds (30000 ms)
+        if (data.command === "record" && data.duration !== undefined) {
+          message.duration = data.duration;
+        }
+
+        ws.send(JSON.stringify(message), (err) => {
           if (err) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: "Failed to send message" }));
