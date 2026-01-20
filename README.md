@@ -41,7 +41,7 @@ The server reads configuration from `config.json` in the same directory. If the 
   node server.js
   ```
 
-3. Quick WebSocket test using `websocat`:
+3. Quick WebSocket test using [`websocat`](https://github.com/vi/websocat?tab=readme-ov-file#installation):
   ```bash
   websocat --insecure wss://localhost:8080
   ```
