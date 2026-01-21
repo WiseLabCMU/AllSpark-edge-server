@@ -12,16 +12,44 @@ let config;
 let useSSL = false;
 let protocols = ["ws"];
 
+// Load defaults first
+let defaultConfig = {
+  hostname: "localhost",
+  port: 8080
+};
+
 try {
-  const configFile = path.join(__dirname, "config.json");
-  const configData = fs.readFileSync(configFile, "utf8");
-  config = JSON.parse(configData);
+  const defaultConfigFile = path.join(__dirname, "config_defaults.json");
+  const defaultConfigData = fs.readFileSync(defaultConfigFile, "utf8");
+  defaultConfig = JSON.parse(defaultConfigData);
 } catch (err) {
-  console.error("Failed to load config.json, using defaults:", err);
-  config = {
-    hostname: "localhost",
-    port: 8080
-  };
+  console.warn("Failed to load config_defaults.json, using built-in defaults:", err.message);
+}
+
+// Handle user config
+const configFile = path.join(__dirname, "config.json");
+const configExists = fs.existsSync(configFile);
+
+if (!configExists) {
+  // Create config.json from defaults if it doesn't exist
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(defaultConfig, null, 2));
+    console.log("Created config.json from config_defaults.json");
+  } catch (err) {
+    console.warn("Failed to create config.json:", err.message);
+  }
+}
+
+// Load user config and merge with defaults
+config = { ...defaultConfig };
+try {
+  const configData = fs.readFileSync(configFile, "utf8");
+  const userConfig = JSON.parse(configData);
+  config = { ...defaultConfig, ...userConfig };
+  console.log("Loaded user config from config.json");
+} catch (err) {
+  console.error("Failed to load config.json:", err.message);
+  config = defaultConfig;
 }
 
 // Try to load SSL certificates if specified in config

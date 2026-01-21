@@ -151,3 +151,6 @@ keys/
 *.cert
 *.p12
 *.pfx
+
+# User configuration files
+config.json
