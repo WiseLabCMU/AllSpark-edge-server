@@ -126,6 +126,9 @@
             // Preserve existing duration input value if it exists
             const existingInput = document.getElementById(`duration-${conn.id}`);
             const currentValue = existingInput ? existingInput.value : "30000";
+            // Preserve existing autoUpload checkbox state if it exists, default to true
+            const existingCheckbox = document.getElementById(`autoUpload-${conn.id}`);
+            const isChecked = existingCheckbox ? existingCheckbox.checked : true;
             return `
             <div class="connection-item">
               <div class="connection-id">ID: ${conn.id}</div>
@@ -136,6 +139,10 @@
               <div style="margin-top: 10px;">
                 <label for="duration-${conn.id}" style="display: inline-block; margin-right: 10px;">Duration (ms):</label>
                 <input type="number" id="duration-${conn.id}" value="${currentValue}" min="0" style="width: 100px; padding: 5px; border: 1px solid #ccc; border-radius: 4px;" />
+                <label for="autoUpload-${conn.id}" style="display: inline-block; margin-left: 20px; margin-right: 10px;">
+                  <input type="checkbox" id="autoUpload-${conn.id}" ${isChecked ? 'checked' : ''} style="cursor: pointer;" />
+                  Auto Upload
+                </label>
                 <button onclick="sendRecordCommand('${conn.id}')" style="margin-left: 10px; padding: 8px 12px; font-size: 14px; cursor: pointer; background-color: #2196f3; color: white; border: none; border-radius: 4px;">
                   Send Record Command
                 </button>
@@ -164,7 +171,9 @@
     async function sendRecordCommand(connectionId) {
       try {
         const durationInput = document.getElementById(`duration-${connectionId}`);
+        const autoUploadCheckbox = document.getElementById(`autoUpload-${connectionId}`);
         const duration = parseInt(durationInput.value, 10);
+        const autoUpload = autoUploadCheckbox.checked;
 
         const response = await fetch(`/api/command/${connectionId}`, {
           method: 'POST',
@@ -174,13 +183,14 @@
           body: JSON.stringify({
             command: 'record',
             message: 'Test record command from server',
-            duration: duration
+            duration: duration,
+            autoUpload: autoUpload
           })
         });
 
         const data = await response.json();
         if (data.success) {
-          alert(`Command sent to ${connectionId} with duration ${duration}ms`);
+          alert(`Command sent to ${connectionId}\nDuration: ${duration}ms\nAuto Upload: ${autoUpload}`);
         } else {
           alert('Failed to send command: ' + data.error);
         }

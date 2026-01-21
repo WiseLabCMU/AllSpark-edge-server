@@ -103,8 +103,14 @@ function requestHandler(req, res) {
 
         // For record command, optionally include duration (in milliseconds)
         // If not provided, client will default to 30 seconds (30000 ms)
-        if (data.command === "record" && data.duration !== undefined) {
-          message.duration = data.duration;
+        if (data.command === "record") {
+          if (data.duration !== undefined) {
+            message.duration = data.duration;
+          }
+          // Include autoUpload flag if provided
+          if (data.autoUpload !== undefined) {
+            message.autoUpload = data.autoUpload;
+          }
         }
 
         ws.send(JSON.stringify(message), (err) => {
