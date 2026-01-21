@@ -97,6 +97,7 @@ Returns information about current WebSocket connections and their upload states.
   "connections": [
     {
       "id": "abc123def",
+      "clientName": "Lab Camera 1 (iPhone 14 Pro)",
       "hasMetadata": true,
       "filename": "video.mp4",
       "receivedData": true
@@ -185,7 +186,32 @@ Any request that doesn't match the above endpoints returns a `404` error.
 
 ### WebSocket Message Protocol
 
-#### 1. Command Message from Server (String/JSON)
+#### 1. Client Identification Message (String/JSON)
+
+Client sends identification info upon connecting:
+
+**Format:**
+```json
+{
+  "type": "clientInfo",
+  "clientName": "Lab Camera 1 (iPhone 14 Pro)"
+}
+```
+
+**Parameters:**
+- `type`: `"clientInfo"` - Identifies this as a client identification message
+- `clientName`: Display name for this client, shown in server's web interface
+  - Format: "CustomName (DeviceModel)" if custom name is set
+  - Format: "DeviceModel" if no custom name is set
+
+**Server Behavior:**
+- Stores clientName for the connection
+- Returns it in `/api/status` endpoint for display on web interface
+- Helps identify which device is which in multi-client scenarios
+
+---
+
+#### 2. Command Message from Server (String/JSON)
 
 Server sends commands to client:
 
@@ -297,7 +323,10 @@ The server provides a web-based control interface at `http://localhost:8080` for
 ### Features
 
 1. **Active Connections List**
-   - Shows all connected clients with their IDs
+   - Shows all connected clients with their display names
+   - Device names automatically sent by clients (customizable in Settings)
+   - Format: "CustomName (DeviceModel)" or just "DeviceModel"
+   - Connection ID shown in smaller text below the name
    - Displays metadata status and received data status
    - Real-time updates every 5 seconds
 

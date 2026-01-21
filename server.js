@@ -71,6 +71,7 @@ function requestHandler(req, res) {
     res.writeHead(200, { "Content-Type": "application/json" });
     const connections = Array.from(uploadStates.entries()).map(([id, state]) => ({
       id,
+      clientName: state.clientName || "Unknown Device",
       hasMetadata: state.metadata !== null,
       filename: state.metadata?.filename || null,
       receivedData: state.receivedData
@@ -144,7 +145,8 @@ wss.on("connection", function connection(ws) {
   uploadStates.set(connectionId, {
     metadata: null,
     fileStream: null,
-    receivedData: false
+    receivedData: false,
+    clientName: null
   });
   clientConnections.set(connectionId, ws);
   console.log(`Client connected ${connectionId}`);
@@ -172,10 +174,17 @@ wss.on("connection", function connection(ws) {
     }
 
     if (isStringMessage) {
-      // First message: metadata or test message as JSON string
+      // First message: metadata, test message, or client info as JSON string
       try {
         const parsedMessage = JSON.parse(message);
         console.log(`Received message:`, parsedMessage);
+
+        // Check if this is a client info message
+        if (parsedMessage.type === "clientInfo") {
+          state.clientName = parsedMessage.clientName;
+          console.log(`Client identified as: ${state.clientName}`);
+          return;
+        }
 
         // Check if this is a test message
         if (parsedMessage.type === "test") {

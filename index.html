@@ -131,7 +131,7 @@
             const isChecked = existingCheckbox ? existingCheckbox.checked : true;
             return `
             <div class="connection-item">
-              <div class="connection-id">ID: ${conn.id}</div>
+              <div class="connection-id">${conn.clientName || 'Unknown Device'} <span style="color: #999; font-size: 0.85em;">(${conn.id})</span></div>
               <div class="connection-details">
                 <p>Metadata: ${conn.hasMetadata ? '✓' : '✗'} ${conn.filename ? `(${conn.filename})` : ''}</p>
                 <p>Data Received: ${conn.receivedData ? '✓' : '✗'}</p>
