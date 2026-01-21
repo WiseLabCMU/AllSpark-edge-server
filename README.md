@@ -116,13 +116,29 @@ Sends a command to a specific connected WebSocket client.
 **Parameters:**
 - `connectionId` (URL path parameter): The ID of the target connection
 
-**Request Body:**
+**Request Body for Record Command:**
+```json
+{
+  "command": "record",
+  "message": "optional message content",
+  "duration": 5000,
+  "autoUpload": true
+}
+```
+
+**Request Body for Generic Command:**
 ```json
 {
   "command": "command_name",
   "message": "optional message content"
 }
 ```
+
+**Command Parameters:**
+- `command` (required): The command type (e.g., `"record"`)
+- `message` (optional): Additional context or instructions
+- `duration` (optional, record command only): Recording duration in milliseconds (default: 30000)
+- `autoUpload` (optional, record command only): Whether to auto-upload after recording (default: false)
 
 **Success Response:**
 ```json
@@ -169,7 +185,37 @@ Any request that doesn't match the above endpoints returns a `404` error.
 
 ### WebSocket Message Protocol
 
-#### 1. Metadata Message (String/JSON)
+#### 1. Command Message from Server (String/JSON)
+
+Server sends commands to client:
+
+**Record Command (with optional duration and auto-upload):**
+```json
+{
+  "command": "record",
+  "message": "optional message content",
+  "duration": 5000,
+  "autoUpload": true
+}
+```
+
+**Parameters:**
+- `command`: `"record"` - requests client to start recording
+- `message` (optional): Additional context displayed to user
+- `duration` (optional): Recording duration in milliseconds (default: 30000 = 30 seconds)
+- `autoUpload` (optional): Auto-upload after recording (default: false)
+
+**Client Behavior:**
+- Immediately starts recording video
+- Records for specified duration
+- Automatically stops when duration expires
+- If `autoUpload` is true, uploads the recorded file to server
+- If `autoUpload` is false, saves file locally without uploading
+- Displays alert showing command parameters
+
+---
+
+#### 2. Metadata Message (String/JSON)
 
 Client sends metadata for the file upload:
 
@@ -191,7 +237,7 @@ Client sends metadata for the file upload:
 }
 ```
 
-#### 2. Binary Data Messages (Blob)
+#### 3. Binary Data Messages (Blob)
 
 Client sends raw binary data (video file contents) after metadata.
 
@@ -243,6 +289,39 @@ Fired when a WebSocket error occurs.
 ## Upload Directory
 
 Uploaded files are stored in the `uploads/` directory, which is created automatically if it doesn't exist.
+
+## Web Interface (index.html)
+
+The server provides a web-based control interface at `http://localhost:8080` for monitoring connections and sending remote commands.
+
+### Features
+
+1. **Active Connections List**
+   - Shows all connected clients with their IDs
+   - Displays metadata status and received data status
+   - Real-time updates every 5 seconds
+
+2. **Send Record Command**
+   - **Duration Input**: Set recording duration in milliseconds (default: 30000)
+   - **Auto Upload Checkbox**: Enable/disable automatic upload after recording (default: checked/true)
+   - **Send Record Command Button**: Transmit the command to the selected connection
+   - Both fields persist across page refreshes
+
+3. **Command Confirmation**
+   - Displays alert with connection ID, duration, and auto-upload setting
+   - Confirms successful delivery to client
+
+### Example Workflow
+
+1. Navigate to `http://localhost:8080` in a web browser
+2. View connected iOS devices in the "Active Connections" section
+3. For each connection, optionally adjust the Duration (e.g., 10000 for 10 seconds)
+4. Check/uncheck the "Auto Upload" checkbox based on desired behavior
+5. Click "Send Record Command" to trigger remote recording
+6. Client receives command and automatically:
+   - Starts recording for specified duration
+   - Stops recording when time expires
+   - (If auto-upload enabled) Uploads recorded video to server
 
 ## Troubleshooting
 
