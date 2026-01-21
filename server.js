@@ -100,9 +100,8 @@ function requestHandler(req, res) {
     const connections = Array.from(uploadStates.entries()).map(([id, state]) => ({
       id,
       clientName: state.clientName || "Unknown Device",
-      hasMetadata: state.metadata !== null,
-      filename: state.metadata?.filename || null,
-      receivedData: state.receivedData
+      lastFilename: state.lastFilename,
+      lastFilesize: state.lastFilesize
     }));
     res.end(JSON.stringify({
       totalConnections: uploadStates.size,
@@ -174,7 +173,9 @@ wss.on("connection", function connection(ws) {
     metadata: null,
     fileStream: null,
     receivedData: false,
-    clientName: null
+    clientName: null,
+    lastFilename: null,
+    lastFilesize: null
   });
   clientConnections.set(connectionId, ws);
   console.log(`Client connected ${connectionId}`);
@@ -265,6 +266,9 @@ wss.on("connection", function connection(ws) {
             state.fileStream.end();
 
             const filepath = path.join(config.uploadPath, state.metadata.filename);
+            // Store the last filename and filesize
+            state.lastFilename = state.metadata.filename;
+            state.lastFilesize = state.metadata.filesize || message.length;
             console.log(`File uploaded successfully: ${filepath}`);
             ws.send(JSON.stringify({ status: "success", message: "Video uploaded successfully" }));
 

@@ -65,9 +65,6 @@
 </head>
 <body>
   <h1>Perceptor Test Host Server</h1>
-  <div class="status">
-    <strong>✓ Server is running</strong>
-  </div>
   <div class="info">
     <h2>WebSocket Connection</h2>
     <p>The server is ready to accept WebSocket connections at <code id="ws-url">ws://localhost:8080</code></p>
@@ -133,8 +130,8 @@
             <div class="connection-item">
               <div class="connection-id">${conn.clientName || 'Unknown Device'} <span style="color: #999; font-size: 0.85em;">(${conn.id})</span></div>
               <div class="connection-details">
-                <p>Metadata: ${conn.hasMetadata ? '✓' : '✗'} ${conn.filename ? `(${conn.filename})` : ''}</p>
-                <p>Data Received: ${conn.receivedData ? '✓' : '✗'}</p>
+                ${conn.lastFilename ? `<p>Last File: <strong>${conn.lastFilename}</strong></p>
+                <p>Size: ${formatFileSize(conn.lastFilesize)}</p>` : '<p style="color: #999;">No files received yet</p>'}
               </div>
               <div style="margin-top: 10px;">
                 <label for="duration-${conn.id}" style="display: inline-block; margin-right: 10px;">Duration (ms):</label>
@@ -168,10 +165,30 @@
     // Then update every 5 seconds
     setInterval(updateStatus, 5000);
 
+    function formatFileSize(bytes) {
+      if (!bytes) return 'Unknown';
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
     async function sendRecordCommand(connectionId) {
       try {
         const durationInput = document.getElementById(`duration-${connectionId}`);
         const autoUploadCheckbox = document.getElementById(`autoUpload-${connectionId}`);
+
+        // Defensive checks to ensure elements exist
+        if (!durationInput) {
+          alert('Error: Duration input not found. The connection list may have been updated. Please try again.');
+          return;
+        }
+        if (!autoUploadCheckbox) {
+          alert('Error: Auto Upload checkbox not found. The connection list may have been updated. Please try again.');
+          return;
+        }
+
         const duration = parseInt(durationInput.value, 10);
         const autoUpload = autoUploadCheckbox.checked;
 
