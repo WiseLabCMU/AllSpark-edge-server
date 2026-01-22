@@ -19,6 +19,10 @@ The server reads configuration from `config.json` in the same directory. If the 
   "uploadPath": "uploads/"
 }
 ```
+It is highly suggested that you create your own config file first and update the `hostname` field for your own system:
+```bash
+cp config_defaults.json config.json
+```
 
 ## Testing
 
@@ -33,7 +37,7 @@ The server reads configuration from `config.json` in the same directory. If the 
       -x509 \
       -subj "/CN=localhost" \
       -keyout keys/test-private.key \
-      -out  keys/test-public.crt
+      -out keys/test-public.crt
   ```
 
 2. Launch the Perceptor Server Test:
