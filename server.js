@@ -139,6 +139,10 @@ function requestHandler(req, res) {
           if (data.autoUpload !== undefined) {
             message.autoUpload = data.autoUpload;
           }
+          // Include camera selection if provided
+          if (data.camera !== undefined) {
+            message.camera = data.camera;
+          }
         }
 
         ws.send(JSON.stringify(message), (err) => {
