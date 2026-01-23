@@ -127,7 +127,8 @@ Sends a command to a specific connected WebSocket client.
   "command": "record",
   "message": "optional message content",
   "duration": 5000,
-  "autoUpload": true
+  "autoUpload": true,
+  "camera": "front"
 }
 ```
 
@@ -144,6 +145,7 @@ Sends a command to a specific connected WebSocket client.
 - `message` (optional): Additional context or instructions
 - `duration` (optional, record command only): Recording duration in milliseconds (default: 30000)
 - `autoUpload` (optional, record command only): Whether to auto-upload after recording (default: false)
+- `camera` (optional, record command only): Camera to use (`"front"` or `"back"`). If omitted, active camera is used.
 
 **Success Response:**
 ```json
@@ -337,8 +339,9 @@ The server provides a web-based control interface at `http://localhost:8080` for
 2. **Send Record Command**
    - **Duration Input**: Set recording duration in milliseconds (default: 30000)
    - **Auto Upload Checkbox**: Enable/disable automatic upload after recording (default: checked/true)
+   - **Camera Selection**: Radio buttons to choose "Front" or "Back" camera
    - **Send Record Command Button**: Transmit the command to the selected connection
-   - Both fields persist across page refreshes
+   - All fields persist across page refreshes
 
 3. **Command Confirmation**
    - Displays alert with connection ID, duration, and auto-upload setting
