@@ -107,6 +107,9 @@ function requestHandler(req, res) {
       totalConnections: uploadStates.size,
       connections
     }));
+  } else if (req.method === "GET" && req.url === "/api/config") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(config.clientConfig || {}));
   } else if (req.method === "POST" && req.url.startsWith("/api/command/")) {
     const connectionId = req.url.substring("/api/command/".length);
     const ws = clientConnections.get(connectionId);
@@ -183,6 +186,15 @@ wss.on("connection", function connection(ws) {
   });
   clientConnections.set(connectionId, ws);
   console.log(`Client connected ${connectionId}`);
+
+  // Send client configuration immediately
+  if (config.clientConfig) {
+    ws.send(JSON.stringify({
+      type: "clientConfig",
+      config: config.clientConfig
+    }));
+    console.log(`Sent client config to ${connectionId}`);
+  }
 
   ws.on("message", function incoming(message) {
     const state = uploadStates.get(connectionId);

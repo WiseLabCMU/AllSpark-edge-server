@@ -77,6 +77,12 @@
 <body>
   <h1>Perceptor Test Host Server</h1>
   <div class="info">
+    <h2>Client Configuration</h2>
+    <p>Connected clients will receive the following configuration:</p>
+    <pre id="client-config-display">Loading...</pre>
+  </div>
+
+  <div class="info">
     <h2>WebSocket Connection</h2>
     <p>The server is ready to accept WebSocket connections at <code id="ws-url">ws://localhost:8080</code></p>
     <p>Supported protocols: <strong id="protocols-status">Loading...</strong></p>
@@ -114,6 +120,16 @@
       } catch (error) {
         console.error('Error fetching protocol status:', error);
         document.getElementById('protocols-status').textContent = 'Unable to determine';
+      }
+
+      // Fetch Client Config
+      try {
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        document.getElementById('client-config-display').textContent = JSON.stringify(configData, null, 2);
+      } catch (error) {
+        console.error('Error fetching client config:', error);
+        document.getElementById('client-config-display').textContent = 'Error loading config';
       }
     }
 
