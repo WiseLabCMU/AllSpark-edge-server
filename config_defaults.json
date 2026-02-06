@@ -5,6 +5,8 @@
   "certFile": "keys/test-public.crt",
   "uploadPath": "uploads/",
   "clientConfig": {
-    "videoFormat": "mp4"
+    "videoFormat": "mp4",
+    "videoChunkDurationMs": 10000,
+    "videoBufferMaxBytes": 10485760
   }
 }

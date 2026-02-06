@@ -40,16 +40,66 @@ if (!configExists) {
   }
 }
 
+// Helper function for deep merge
+function deepMerge(target, source) {
+  for (const key in source) {
+    if (source[key] instanceof Object && key in target) {
+      Object.assign(source[key], deepMerge(target[key], source[key]));
+    }
+  }
+  Object.assign(target || {}, source);
+  return target;
+}
+
 // Load user config and merge with defaults
-config = { ...defaultConfig };
+let userConfig = {};
 try {
   const configData = fs.readFileSync(configFile, "utf8");
-  const userConfig = JSON.parse(configData);
-  config = { ...defaultConfig, ...userConfig };
+  userConfig = JSON.parse(configData);
   console.log("Loaded user config from config.json");
 } catch (err) {
   console.error("Failed to load config.json:", err.message);
-  config = defaultConfig;
+}
+
+// Deep merge defaults into user config
+// We want defaults to fill in gaps in userConfig, but userConfig to override values
+// So we start with defaults, then overlay userConfig.
+// Wait, deepMerge usage: deepMerge(target, source) -> modifies target.
+// To fill defaults: deepMerge(defaultsCopy, userConfig)
+config = JSON.parse(JSON.stringify(defaultConfig)); // Deep copy defaults
+function mergeRecursive(target, source) {
+  for (const p in source) {
+    try {
+      // Property in destination object set; update its value.
+      if (source[p].constructor == Object) {
+        target[p] = mergeRecursive(target[p], source[p]);
+      } else {
+        target[p] = source[p];
+      }
+    } catch (e) {
+      // Property in destination object not set; create it and set its value.
+      target[p] = source[p];
+    }
+  }
+  return target;
+}
+
+config = mergeRecursive(config, userConfig);
+
+// Update config.json on disk with any missing default values
+// We actually want the reverse for updating the file: missing values from defaults added to userConfig
+// But we don't want to overwrite user modifications.
+// Strategy: merge defaults into userConfig, then save userConfig.
+let updatedUserConfig = mergeRecursive(JSON.parse(JSON.stringify(defaultConfig)), userConfig);
+
+try {
+  // Check if we need to update the file (simple check: stringify comparison)
+  // Note: this might reorder keys, but that's fine for JSON.
+  // Actually, merged result 'updatedUserConfig' contains ALL keys.
+  fs.writeFileSync(configFile, JSON.stringify(updatedUserConfig, null, 2));
+  console.log("Updated config.json with merged defaults");
+} catch (err) {
+  console.error("Failed to update config.json:", err.message);
 }
 
 // Try to load SSL certificates if specified in config
