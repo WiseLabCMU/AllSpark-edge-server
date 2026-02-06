@@ -147,22 +147,15 @@
           connectionsList.innerHTML = '<p style="color: #999;">No active connections</p>';
         } else {
           connectionsList.innerHTML = data.connections.map(conn => {
-            // Preserve existing duration input value if it exists
-            const existingInput = document.getElementById(`duration-${conn.id}`);
-            const currentValue = existingInput ? existingInput.value : "30000";
-            // Preserve existing autoUpload checkbox state if it exists, default to true
-            const existingCheckbox = document.getElementById(`autoUpload-${conn.id}`);
-            const isChecked = existingCheckbox ? existingCheckbox.checked : true;
+            // Preserve existing start/end time from DOM or localStorage
+            const startKey = `perceptor_start_${conn.id}`;
+            const endKey = `perceptor_end_${conn.id}`;
 
-            // Preserve existing camera selection if it exists, default to front
-            let currentCamera = "front";
-            const existingRadios = document.getElementsByName(`camera-${conn.id}`);
-            for (const radio of existingRadios) {
-              if (radio.checked) {
-                currentCamera = radio.value;
-                break;
-              }
-            }
+            const existingStart = document.getElementById(`startTime-${conn.id}`);
+            const currentStart = existingStart ? existingStart.value : (localStorage.getItem(startKey) || "");
+
+            const existingEnd = document.getElementById(`endTime-${conn.id}`);
+            const currentEnd = existingEnd ? existingEnd.value : (localStorage.getItem(endKey) || "");
 
             return `
             <div class="connection-item">
@@ -172,23 +165,21 @@
                 <p>Size: ${formatFileSize(conn.lastFilesize)}</p>` : '<p style="color: #999;">No files received yet</p>'}
               </div>
               <div style="margin-top: 10px;">
-                <label for="duration-${conn.id}" style="display: inline-block; margin-right: 10px;">Duration (ms):</label>
-                <input type="number" id="duration-${conn.id}" value="${currentValue}" min="0" style="width: 100px; padding: 5px; border: 1px solid #ccc; border-radius: 4px;" />
-                <label for="autoUpload-${conn.id}" style="display: inline-block; margin-left: 20px; margin-right: 10px;">
-                  <input type="checkbox" id="autoUpload-${conn.id}" ${isChecked ? 'checked' : ''} style="cursor: pointer;" />
-                  Auto Upload
-                </label>
-                <div style="display: inline-block; margin-left: 10px; margin-right: 10px; border-left: 1px solid #ddd; padding-left: 10px;">
-                    <span style="margin-right: 5px;">Camera:</span>
-                    <label style="margin-right: 8px; cursor: pointer;">
-                        <input type="radio" name="camera-${conn.id}" value="front" ${currentCamera === 'front' ? 'checked' : ''}> Front
-                    </label>
-                    <label style="cursor: pointer;">
-                        <input type="radio" name="camera-${conn.id}" value="back" ${currentCamera === 'back' ? 'checked' : ''}> Back
-                    </label>
+              <div style="margin-top: 10px;">
+                <div style="margin-bottom: 5px;">
+                    <label style="display: inline-block; width: 80px;">Start Time:</label>
+                    <input type="datetime-local" id="startTime-${conn.id}" step="1" style="padding: 4px;" value="${currentStart}" onchange="persistTime('${conn.id}', 'start', this.value)">
+                    <button onclick="setRelativeTime('${conn.id}', 'start', -60)" style="font-size: 0.8em;">Last 1 min</button>
+                    <button onclick="setRelativeTime('${conn.id}', 'start', -300)" style="font-size: 0.8em;">Last 5 mins</button>
+                    <button onclick="setRelativeTime('${conn.id}', 'start', -3600)" style="font-size: 0.8em;">Last 1 hour</button>
                 </div>
-                <button onclick="sendRecordCommand('${conn.id}')" style="margin-left: 10px; padding: 8px 12px; font-size: 14px; cursor: pointer; background-color: #2196f3; color: white; border: none; border-radius: 4px;">
-                  Send Record Command
+                <div style="margin-bottom: 5px;">
+                    <label style="display: inline-block; width: 80px;">End Time:</label>
+                    <input type="datetime-local" id="endTime-${conn.id}" step="1" style="padding: 4px;" value="${currentEnd}" onchange="persistTime('${conn.id}', 'end', this.value)">
+                    <button onclick="setRelativeTime('${conn.id}', 'end', 0)" style="font-size: 0.8em;">Now</button>
+                </div>
+                <button onclick="sendUploadTimeRangeCommand('${conn.id}')" style="margin-top: 5px; padding: 8px 12px; font-size: 14px; cursor: pointer; background-color: #2196f3; color: white; border: none; border-radius: 4px;">
+                  Request Upload Time Range
                 </button>
               </div>
             </div>
@@ -221,32 +212,44 @@
       return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
     }
 
-    async function sendRecordCommand(connectionId) {
+    function setRelativeTime(connectionId, type, offsetSeconds) {
+      const now = new Date();
+      const targetTime = new Date(now.getTime() + offsetSeconds * 1000);
+
+      // format for datetime-local: YYYY-MM-DDThh:mm:ss
+      // adjusting for timezone offset
+      const tzOffset = targetTime.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(targetTime - tzOffset)).toISOString().slice(0, 19);
+
+      const inputId = type === 'start' ? `startTime-${connectionId}` : `endTime-${connectionId}`;
+      const input = document.getElementById(inputId);
+      if (input) {
+        input.value = localISOTime;
+        persistTime(connectionId, type, localISOTime);
+      }
+    }
+
+    function persistTime(connectionId, type, value) {
+      const key = type === 'start' ? `perceptor_start_${connectionId}` : `perceptor_end_${connectionId}`;
+      localStorage.setItem(key, value);
+    }
+
+    async function sendUploadTimeRangeCommand(connectionId) {
       try {
-        const durationInput = document.getElementById(`duration-${connectionId}`);
-        const autoUploadCheckbox = document.getElementById(`autoUpload-${connectionId}`);
+        const startTimeInput = document.getElementById(`startTime-${connectionId}`);
+        const endTimeInput = document.getElementById(`endTime-${connectionId}`);
 
-        // Defensive checks to ensure elements exist
-        if (!durationInput) {
-          alert('Error: Duration input not found. The connection list may have been updated. Please try again.');
-          return;
-        }
-        if (!autoUploadCheckbox) {
-          alert('Error: Auto Upload checkbox not found. The connection list may have been updated. Please try again.');
+        if (!startTimeInput || !endTimeInput) {
+          alert('Error: Time inputs not found.');
           return;
         }
 
-        const duration = parseInt(durationInput.value, 10);
-        const autoUpload = autoUploadCheckbox.checked;
+        const startTime = new Date(startTimeInput.value).getTime() / 1000.0; // Seconds
+        const endTime = new Date(endTimeInput.value).getTime() / 1000.0;     // Seconds
 
-        // Get selected camera
-        let camera = "front"; // Default
-        const cameraRadios = document.getElementsByName(`camera-${connectionId}`);
-        for (const radio of cameraRadios) {
-          if (radio.checked) {
-            camera = radio.value;
-            break;
-          }
+        if (isNaN(startTime) || isNaN(endTime)) {
+          alert("Please select valid start and end times.");
+          return;
         }
 
         const response = await fetch(`/api/command/${connectionId}`, {
@@ -255,17 +258,16 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            command: 'record',
-            message: 'Test record command from server',
-            duration: duration,
-            autoUpload: autoUpload,
-            camera: camera
+            command: 'uploadTimeRange',
+            message: 'Upload request from server',
+            startTime: startTime,
+            endTime: endTime
           })
         });
 
         const data = await response.json();
         if (data.success) {
-          alert(`Command sent to ${connectionId}\nDuration: ${duration}ms\nAuto Upload: ${autoUpload}\nCamera: ${camera}`);
+          alert(`Upload command sent to ${connectionId}\nRange: ${startTime} - ${endTime}`);
         } else {
           alert('Failed to send command: ' + data.error);
         }

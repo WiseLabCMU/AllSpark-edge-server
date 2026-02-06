@@ -184,18 +184,15 @@ function requestHandler(req, res) {
 
         // For record command, optionally include duration (in milliseconds)
         // If not provided, client will default to 30 seconds (30000 ms)
-        if (data.command === "record") {
-          if (data.duration !== undefined) {
-            message.duration = data.duration;
+        // For uploadTimeRange command, require startTime and endTime
+        if (data.command === "uploadTimeRange") {
+          if (data.startTime === undefined || data.endTime === undefined) {
+             res.writeHead(400, { "Content-Type": "application/json" });
+             res.end(JSON.stringify({ success: false, error: "Missing startTime or endTime" }));
+             return;
           }
-          // Include autoUpload flag if provided
-          if (data.autoUpload !== undefined) {
-            message.autoUpload = data.autoUpload;
-          }
-          // Include camera selection if provided
-          if (data.camera !== undefined) {
-            message.camera = data.camera;
-          }
+          message.startTime = data.startTime;
+          message.endTime = data.endTime;
         }
 
         ws.send(JSON.stringify(message), (err) => {
