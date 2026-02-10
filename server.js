@@ -217,11 +217,40 @@ function requestHandler(req, res) {
 
 const wss = new WebSocket.Server({ server });
 
+// Keep-Alive Mechanism
+function noop() {}
+
+function heartbeat() {
+  this.isAlive = true;
+}
+
+const keepAliveInterval = config.keepAliveIntervalMs || 30000;
+console.log(`Setting keep-alive interval to ${keepAliveInterval}ms`);
+
+const interval = setInterval(function ping() {
+  wss.clients.forEach(function each(ws) {
+    if (ws.isAlive === false) {
+      console.log("Terminating inactive client");
+      return ws.terminate();
+    }
+
+    ws.isAlive = false;
+    ws.ping(noop);
+  });
+}, keepAliveInterval);
+
+wss.on('close', function close() {
+  clearInterval(interval);
+});
+
 // Store upload state and WebSocket reference per connection
 const uploadStates = new Map();
 const clientConnections = new Map();
 
 wss.on("connection", function connection(ws) {
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
+
   const connectionId = Math.random().toString(36).substr(2, 9);
   uploadStates.set(connectionId, {
     metadata: null,

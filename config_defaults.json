@@ -4,6 +4,7 @@
   "keyFile": "keys/test-private.key",
   "certFile": "keys/test-public.crt",
   "uploadPath": "uploads/",
+  "keepAliveIntervalMs": 30000,
   "clientConfig": {
     "videoFormat": "mp4",
     "videoChunkDurationMs": 30000,

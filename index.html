@@ -165,7 +165,6 @@
                 <p>Size: ${formatFileSize(conn.lastFilesize)}</p>` : '<p style="color: #999;">No files received yet</p>'}
               </div>
               <div style="margin-top: 10px;">
-              <div style="margin-top: 10px;">
                 <div style="margin-bottom: 5px;">
                     <label style="display: inline-block; width: 80px;">Start Time:</label>
                     <input type="datetime-local" id="startTime-${conn.id}" step="1" style="padding: 4px;" value="${currentStart}" onchange="persistTime('${conn.id}', 'start', this.value)">
