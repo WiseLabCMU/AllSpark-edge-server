@@ -322,6 +322,7 @@ wss.on("connection", function connection(ws) {
         }
 
         state.metadata = parsedMessage;
+        state.receivedData = false;
 
         // Create uploads directory if it doesn't exist
         if (!fs.existsSync(config.uploadPath)) {
@@ -348,26 +349,34 @@ wss.on("connection", function connection(ws) {
         return;
       }
 
-      if (state.fileStream) {
-        state.fileStream.write(message, (err) => {
+      const currentStream = state.fileStream;
+      const currentMetadata = state.metadata;
+
+      if (currentStream) {
+        currentStream.write(message, (err) => {
           if (err) {
             console.error("Error writing video data:", err);
             ws.send(JSON.stringify({ status: "error", message: "Failed to write video data" }));
           } else {
-            state.receivedData = true;
-            state.fileStream.end();
+            currentStream.end();
 
-            const filepath = path.join(config.uploadPath, state.metadata.filename);
+            const filepath = path.join(config.uploadPath, currentMetadata.filename);
             // Store the last filename and filesize
-            state.lastFilename = state.metadata.filename;
-            state.lastFilesize = state.metadata.filesize || message.length;
+            state.lastFilename = currentMetadata.filename;
+            state.lastFilesize = currentMetadata.filesize || message.length;
             console.log(`File uploaded successfully: ${filepath}`);
             ws.send(JSON.stringify({ status: "success", message: "Video uploaded successfully" }));
 
-            // Reset state for next upload on the same connection
-            state.metadata = null;
-            state.fileStream = null;
-            state.receivedData = false;
+            // Reset state for next upload ONLY if it hasn't changed (started new upload)
+            if (state.metadata === currentMetadata) {
+                state.metadata = null;
+            }
+            if (state.fileStream === currentStream) {
+                state.fileStream = null;
+                state.receivedData = false;
+            } else {
+                console.log("State changed during write, preserving new state.");
+            }
           }
         });
       }
