@@ -18,9 +18,9 @@ const defaultConfig = {
   hostname: "0.0.0.0",
   port: 8080,
   serviceName: "AllSpark Server",
-  keyFile: "keys/test-private.key",
-  certFile: "keys/test-public.crt",
-  uploadPath: "uploads/",
+  keyFile: "../keys/test-private.key",
+  certFile: "../keys/test-public.crt",
+  uploadPath: "../uploads/",
   keepAliveIntervalMs: 5000,
   clientConfig: {
     videoFormat: "mp4",
@@ -30,7 +30,7 @@ const defaultConfig = {
 };
 
 // Handle user config
-const configFile = path.join(__dirname, "config.json");
+const configFile = path.join(__dirname, "../config.json");
 const configExists = fs.existsSync(configFile);
 
 if (!configExists) {
@@ -109,8 +109,10 @@ try {
 let serverOptions = {};
 if (config.keyFile && config.certFile) {
   try {
-    const keyPath = path.join(__dirname, config.keyFile);
-    const certPath = path.join(__dirname, config.certFile);
+
+    const projectRoot = path.join(__dirname, "../");
+    const keyPath = path.join(projectRoot, config.keyFile);
+    const certPath = path.join(projectRoot, config.certFile);
 
     if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
       serverOptions.key = fs.readFileSync(keyPath);
@@ -129,7 +131,7 @@ const server = useSSL ? https.createServer(serverOptions, requestHandler) : http
 function requestHandler(req, res) {
   // Handle HTTP requests
   if (req.method === "GET" && req.url === "/") {
-    const htmlFile = path.join(__dirname, "index.html");
+    const htmlFile = path.join(__dirname, "../index.html");
     fs.readFile(htmlFile, "utf8", (err, htmlContent) => {
       if (err) {
         res.writeHead(500, { "Content-Type": "text/plain" });
@@ -327,13 +329,18 @@ wss.on("connection", function connection(ws) {
         state.metadata = parsedMessage;
         state.receivedData = false;
 
+        // Resolve upload path relative to project root if it's relative
+        const projectRoot = path.join(__dirname, "../");
+        // Check if config.uploadPath is absolute or relative
+        const uploadDir = path.isAbsolute(config.uploadPath) ? config.uploadPath : path.join(projectRoot, config.uploadPath);
+
         // Create uploads directory if it doesn't exist
-        if (!fs.existsSync(config.uploadPath)) {
-          fs.mkdirSync(config.uploadPath, { recursive: true });
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
         }
 
         // Create write stream for the video file
-        const filepath = path.join(config.uploadPath, state.metadata.filename);
+        const filepath = path.join(uploadDir, state.metadata.filename);
         state.fileStream = fs.createWriteStream(filepath);
 
         state.fileStream.on("error", (err) => {
@@ -363,7 +370,9 @@ wss.on("connection", function connection(ws) {
           } else {
             currentStream.end();
 
-            const filepath = path.join(config.uploadPath, currentMetadata.filename);
+            const projectRoot = path.join(__dirname, "../");
+            const uploadDir = path.isAbsolute(config.uploadPath) ? config.uploadPath : path.join(projectRoot, config.uploadPath);
+            const filepath = path.join(uploadDir, currentMetadata.filename);
             // Store the last filename and filesize
             state.lastFilename = currentMetadata.filename;
             state.lastFilesize = currentMetadata.filesize || message.length;

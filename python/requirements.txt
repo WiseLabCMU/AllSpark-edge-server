@@ -1,0 +1,3 @@
+aiohttp==3.9.3
+zeroconf==0.131.0
+netifaces==0.11.0

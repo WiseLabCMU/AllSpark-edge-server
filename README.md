@@ -2,28 +2,46 @@
 
 This server provides HTTP and WebSocket endpoints for testing perceptor functionality, including video file uploads and remote command execution.
 
+## Directory Structure
+
+```
+tests/perceptor-host-test/
+├── config.json         (Shared configuration)
+├── index.html          (Shared web interface)
+├── keys/               (Shared SSL certificates)
+├── uploads/            (Shared upload directory)
+├── node/               (Node.js Server implementation)
+└── python/             (Python Server implementation)
+```
+
 ## Requirements
-- Node
-- OpenSSL
+- Node.js
+- Python 3
+- OpenSSL (for generating test certificates)
 
 ## Features
 - **HTTP & WebSocket Server**: Handles connection upgrades and video stream uploads.
 - **Bonjour/mDNS Advertising**: Automatically advertises service as `_allspark._tcp` for client discovery.
 - **Client Configuration Sync**: Pushes configuration (chunk duration, storage limits) to connected clients.
 - **Remote Commands**: Send commands to clients to request video uploads for specific time ranges.
+- **Dual Implementation**: Available in both Node.js and Python (aiohttp).
 
 ## Configuration
 
-The server reads configuration from `config.json` in the same directory. If the file is not found, defaults are used:
+Both servers read configuration from `config.json` in the project root (parent of the server directories). If the file is not found, defaults are used.
 
+> [!NOTE]
+> You can only run **one** server at a time if they are configured to use the same port (default: 8080).
+
+**Default Configuration:**
 ```json
 {
-  "hostname": "localhost",
+  "hostname": "0.0.0.0",
   "port": 8080,
   "serviceName": "AllSpark Server",
-  "keyFile": "keys/test-private.key",
-  "certFile": "keys/test-public.crt",
-  "uploadPath": "uploads/",
+  "keyFile": "../keys/test-private.key",
+  "certFile": "../keys/test-public.crt",
+  "uploadPath": "../uploads/",
   "clientConfig": {
     "videoFormat": "mp4",
     "videoChunkDurationMs": 30000,
@@ -39,40 +57,75 @@ The server reads configuration from `config.json` in the same directory. If the 
   - **videoChunkDurationMs**: Duration of recording chunks in milliseconds
   - **videoBufferMaxMB**: Max storage usage on client before old files are deleted
 
-## Testing
+## SSL Certificates
 
-1. Generate a testing-only self-signed certificate to secure the websocket transport (you only need to do this once):
-  ```bash
-  mkdir keys
-  openssl req \
-      -new \
-      -newkey rsa:2048 \
-      -days 365 \
-      -nodes \
-      -x509 \
-      -subj "/CN=localhost" \
-      -keyout keys/test-private.key \
-      -out keys/test-public.crt
-  ```
+Generate a testing-only self-signed certificate to secure the websocket transport (you only need to do this once):
 
-2. Launch the Perceptor Server Test:
-  ```bash
-  node server.js
-  ```
+```bash
+mkdir -p keys
+openssl req \
+    -new \
+    -newkey rsa:2048 \
+    -days 365 \
+    -nodes \
+    -x509 \
+    -subj "/CN=localhost" \
+    -keyout keys/test-private.key \
+    -out keys/test-public.crt
+```
 
-3. Quick WebSocket test using [`websocat`](https://github.com/vi/websocat?tab=readme-ov-file#installation):
-  ```bash
-  websocat --insecure wss://localhost:8080
-  ```
-  or
-  ```bash
-  websocat ws://localhost:8080
-  ```
+## Running the Servers
+
+### Node.js Server
+
+1. **Navigate to the node directory:**
+   ```bash
+   cd node
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start the server:**
+   ```bash
+   node server.js
+   ```
+
+### Python Server
+
+1. **Navigate to the python directory:**
+   ```bash
+   cd python
+   ```
+
+2. **Set up a virtual environment (recommended):**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Start the server:**
+   ```bash
+   python server.py
+   ```
+
+### Quick WebSocket Test
+Using [`websocat`](https://github.com/vi/websocat):
+```bash
+websocat --insecure wss://localhost:8080
+```
 
 ## HTTP Endpoints
 
 ### GET `/`
-Serves the HTML interface from `index.html`.
+Serves the HTML interface from `../index.html`.
 
 **Response:**
 - Status: `200`
