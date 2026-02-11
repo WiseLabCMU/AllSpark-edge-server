@@ -327,7 +327,7 @@ if __name__ == '__main__':
             server=f"{socket.gethostname()}.local."
         )
         zeroconf.register_service(info)
-        print(f"Advertising service on {local_ip}:{config['port']}")
+        print(f"Advertising Bonjour service: {config['serviceName']} on {local_ip}:{config['port']}")
     except Exception as e:
         print(f"Failed to start Zeroconf: {e}")
 

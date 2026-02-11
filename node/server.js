@@ -7,6 +7,7 @@ const path = require("path");
 const http = require("http");
 const https = require("https");
 const { Bonjour } = require('bonjour-service');
+const os = require("os");
 
 // Load configuration
 let config;
@@ -424,7 +425,21 @@ server.listen(config.port, config.hostname, () => {
   // Advertise service via Bonjour
   const bonjour = new Bonjour();
   const serviceName = config.serviceName;
-  console.log(`Advertising Bonjour service: ${serviceName} on port ${config.port}`);
+
+  // Find local IP
+  let localIP = "0.0.0.0";
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        localIP = iface.address;
+        break;
+      }
+    }
+    if (localIP !== "0.0.0.0") break;
+  }
+
+  console.log(`Advertising Bonjour service: ${serviceName} on ${localIP}:${config.port}`);
 
   bonjour.publish({
     name: serviceName,
