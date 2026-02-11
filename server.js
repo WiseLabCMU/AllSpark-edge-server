@@ -13,19 +13,20 @@ let config;
 let useSSL = false;
 let protocols = ["ws"];
 
-// Load defaults first
-let defaultConfig = {
-  hostname: "localhost",
-  port: 8080
+// Hardcoded defaults
+const defaultConfig = {
+  hostname: "0.0.0.0",
+  port: 8080,
+  keyFile: "keys/test-private.key",
+  certFile: "keys/test-public.crt",
+  uploadPath: "uploads/",
+  keepAliveIntervalMs: 5000,
+  clientConfig: {
+    videoFormat: "mp4",
+    videoChunkDurationMs: 30000,
+    videoBufferMaxMB: 16000
+  }
 };
-
-try {
-  const defaultConfigFile = path.join(__dirname, "config_defaults.json");
-  const defaultConfigData = fs.readFileSync(defaultConfigFile, "utf8");
-  defaultConfig = JSON.parse(defaultConfigData);
-} catch (err) {
-  console.warn("Failed to load config_defaults.json, using built-in defaults:", err.message);
-}
 
 // Handle user config
 const configFile = path.join(__dirname, "config.json");
@@ -35,7 +36,7 @@ if (!configExists) {
   // Create config.json from defaults if it doesn't exist
   try {
     fs.writeFileSync(configFile, JSON.stringify(defaultConfig, null, 2));
-    console.log("Created config.json from config_defaults.json");
+    console.log("Created config.json from internal defaults");
   } catch (err) {
     console.warn("Failed to create config.json:", err.message);
   }
