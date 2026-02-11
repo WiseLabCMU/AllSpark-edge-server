@@ -7,11 +7,7 @@ import time
 from aiohttp import web, WSMsgType
 from zeroconf import Zeroconf, ServiceInfo
 import netifaces
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+import socket
 
 # Constants
 CONFIG_FILE = "../config.json"
@@ -50,11 +46,11 @@ def load_config():
                 # Merge clientConfig specifically if present
                 if "clientConfig" in user_config:
                     config["clientConfig"].update(user_config["clientConfig"])
-            logger.info("Loaded config from %s", config_path)
+            print(f"Loaded config from {config_path}")
         except Exception as e:
-            logger.error("Failed to load config: %s", e)
+            print(f"Failed to load config: {e}")
     else:
-        logger.info("Using default config")
+        print("Using default config")
 
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -141,7 +137,7 @@ async def websocket_handler(request):
         "lastFilesize": None
     }
 
-    logger.info("Client connected: %s", connection_id)
+    print(f"Client connected: {connection_id}")
 
     # Send client configuration
     if "clientConfig" in config:
@@ -149,7 +145,7 @@ async def websocket_handler(request):
             "type": "clientConfig",
             "config": config["clientConfig"]
         })
-        logger.info("Sent config to %s", connection_id)
+        print(f"Sent config to {connection_id}")
 
     try:
         async for msg in ws:
@@ -158,11 +154,11 @@ async def websocket_handler(request):
             if msg.type == WSMsgType.TEXT:
                 try:
                     data = json.loads(msg.data)
-                    logger.info("Received message from %s: %s", connection_id, data)
+                    print(f"Received message from {connection_id}: {data}")
 
                     if data.get("type") == "clientInfo":
                         state["clientName"] = data.get("clientName")
-                        logger.info("Client identified as: %s", state["clientName"])
+                        print(f"Client identified as: {state['clientName']}")
 
                     elif data.get("type") == "test":
                         await ws.send_json({"status": "success", "message": "Test message received"})
@@ -183,7 +179,7 @@ async def websocket_handler(request):
                         try:
                             state["file_handle"] = open(filepath, "wb")
                         except Exception as e:
-                            logger.error("Failed to open file for writing: %s", e)
+                            print(f"Failed to open file for writing: {e}")
                             await ws.send_json({"status": "error", "message": "Failed to write file"})
 
                     else:
@@ -191,12 +187,12 @@ async def websocket_handler(request):
                              await ws.send_json({"status": "error", "message": "Unknown message type"})
 
                 except json.JSONDecodeError:
-                    logger.warning("Invalid JSON received")
+                    print("Invalid JSON received")
                     await ws.send_json({"status": "error", "message": "Invalid JSON"})
 
             elif msg.type == WSMsgType.BINARY:
                 if not state["metadata"] or not state["file_handle"]:
-                    logger.warning("Received binary data without metadata")
+                    print("Received binary data without metadata")
                     await ws.send_json({"status": "error", "message": "Metadata not received yet"})
                     continue
 
@@ -213,21 +209,21 @@ async def websocket_handler(request):
                     state["file_handle"] = None
                     state["metadata"] = None
 
-                    logger.info("File uploaded successfully: %s (%d bytes)", filepath, filesize)
+                    print(f"File uploaded successfully: {filepath} ({filesize} bytes)")
                     await ws.send_json({"status": "success", "message": "Video uploaded successfully"})
 
                 except Exception as e:
-                    logger.error("Error writing video data: %s", e)
+                    print(f"Error writing video data: {e}")
                     await ws.send_json({"status": "error", "message": "Failed to write video data"})
                     if state["file_handle"]:
                         state["file_handle"].close()
                         state["file_handle"] = None
 
             elif msg.type == WSMsgType.ERROR:
-                logger.error('ws connection closed with exception %s', ws.exception())
+                print(f"ws connection closed with exception {ws.exception()}")
 
     finally:
-        logger.info("Client disconnected: %s", connection_id)
+        print(f"Client disconnected: {connection_id}")
         if connection_id in upload_states:
             state = upload_states[connection_id]
             if state["file_handle"]:
@@ -262,10 +258,8 @@ async def register_zeroconf(port):
     )
 
     zeroconf.register_service(info)
-    logger.info("Registered Bonjour service: %s on port %d", config['serviceName'], port)
+    print(f"Registered Bonjour service: {config['serviceName']} on port {port}")
     return zeroconf, info
-
-import socket
 
 async def init_app():
     load_config()
@@ -311,9 +305,9 @@ if __name__ == '__main__':
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
         use_ssl = True
-        logger.info("SSL enabled")
+        print("SSL enabled")
     else:
-        logger.warning("SSL keys not found, using HTTP")
+        print("SSL keys not found, using HTTP")
 
     # Start Zeroconf
     zeroconf = Zeroconf()
@@ -329,13 +323,13 @@ if __name__ == '__main__':
             f"{config['serviceName']}._allspark._tcp.local.",
             addresses=[socket.inet_aton(local_ip)],
             port=config['port'],
-            properties={},
+            properties={'path': '/'},
             server=f"{socket.gethostname()}.local."
         )
         zeroconf.register_service(info)
-        logger.info("Advertising service on %s:%d", local_ip, config['port'])
+        print(f"Advertising service on {local_ip}:{config['port']}")
     except Exception as e:
-        logger.error("Failed to start Zeroconf: %s", e)
+        print(f"Failed to start Zeroconf: {e}")
 
     try:
         web.run_app(init_app(), port=config["port"], ssl_context=ssl_context, access_log=None)
