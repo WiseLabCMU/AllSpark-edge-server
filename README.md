@@ -6,6 +6,12 @@ This server provides HTTP and WebSocket endpoints for testing perceptor function
 - Node
 - OpenSSL
 
+## Features
+- **HTTP & WebSocket Server**: Handles connection upgrades and video stream uploads.
+- **Bonjour/mDNS Advertising**: Automatically advertises service as `_allspark._tcp` for client discovery.
+- **Client Configuration Sync**: Pushes configuration (chunk duration, storage limits) to connected clients.
+- **Remote Commands**: Send commands to clients to request video uploads for specific time ranges.
+
 ## Configuration
 
 The server reads configuration from `config.json` in the same directory. If the file is not found, defaults are used:
@@ -14,15 +20,24 @@ The server reads configuration from `config.json` in the same directory. If the 
 {
   "hostname": "localhost",
   "port": 8080,
+  "serviceName": "AllSpark Server",
   "keyFile": "keys/test-private.key",
   "certFile": "keys/test-public.crt",
-  "uploadPath": "uploads/"
+  "uploadPath": "uploads/",
+  "clientConfig": {
+    "videoFormat": "mp4",
+    "videoChunkDurationMs": 30000,
+    "videoBufferMaxMB": 16000
+  }
 }
 ```
-It is highly suggested that you create your own config file first and update the `hostname` field for your own system:
-```bash
-cp config_defaults.json config.json
-```
+
+### Configuration Options
+- **serviceName**: The name advertised via Bonjour (default: "AllSpark Server")
+- **clientConfig**: Settings pushed to clients upon connection
+  - **videoFormat**: Preferred video encoding ("mp4" or "mov")
+  - **videoChunkDurationMs**: Duration of recording chunks in milliseconds
+  - **videoBufferMaxMB**: Max storage usage on client before old files are deleted
 
 ## Testing
 
@@ -52,11 +67,6 @@ cp config_defaults.json config.json
   or
   ```bash
   websocat ws://localhost:8080
-  ```
-
-4. Launch the iOS AllSpark Mobile app, and make sure to use the same port and and IP address in the `Settings` tab of the machine you are running `server.js` on. The `Camera` tab will make the websocket connection automatically. You may need to query your own IP address with something like:
-  ```bash
-  ifconfig | awk '/inet / {sub(/\/.*/, "", $2); print $2}' | tail -1
   ```
 
 ## HTTP Endpoints
@@ -102,7 +112,6 @@ Returns information about current WebSocket connections and their upload states.
     {
       "id": "abc123def",
       "clientName": "Lab Camera 1 (iPhone 14 Pro)",
-      "hasMetadata": true,
       "filename": "video.mp4",
       "receivedData": true
     }
@@ -121,31 +130,21 @@ Sends a command to a specific connected WebSocket client.
 **Parameters:**
 - `connectionId` (URL path parameter): The ID of the target connection
 
-**Request Body for Record Command:**
+**Request Body for Upload Time Range Command:**
 ```json
 {
-  "command": "record",
+  "command": "uploadTimeRange",
   "message": "optional message content",
-  "duration": 5000,
-  "autoUpload": true,
-  "camera": "front"
-}
-```
-
-**Request Body for Generic Command:**
-```json
-{
-  "command": "command_name",
-  "message": "optional message content"
+  "startTime": 1700000000.0,
+  "endTime": 1700000060.0
 }
 ```
 
 **Command Parameters:**
-- `command` (required): The command type (e.g., `"record"`)
-- `message` (optional): Additional context or instructions
-- `duration` (optional, record command only): Recording duration in milliseconds (default: 30000)
-- `autoUpload` (optional, record command only): Whether to auto-upload after recording (default: false)
-- `camera` (optional, record command only): Camera to use (`"front"` or `"back"`). If omitted, active camera is used.
+- `command` (required): The command type (`"uploadTimeRange"`)
+- `startTime` (required for uploadTimeRange): Start timestamp (Unix epoch seconds)
+- `endTime` (required for uploadTimeRange): End timestamp (Unix epoch seconds)
+- `message` (optional): Additional context for the user
 
 **Success Response:**
 ```json
@@ -184,11 +183,13 @@ Any request that doesn't match the above endpoints returns a `404` error.
 ### Connection Flow
 
 1. Client connects to WebSocket server
-2. Server assigns a unique `connectionId` to the connection
-3. Client sends metadata as JSON string
-4. Server creates output file stream
-5. Client sends binary video data
-6. Server writes data to file and closes stream
+2. Server immediately sends `clientConfig` JSON
+3. Client sends identification info (`clientInfo`)
+4. Server assigns a unique `connectionId`
+5. Client sends metadata as JSON string (for upload)
+6. Server creates output file stream
+7. Client sends binary video data
+8. Server writes data to file and closes stream
 
 ### WebSocket Message Protocol
 
@@ -217,33 +218,36 @@ Client sends identification info upon connecting:
 
 ---
 
-#### 2. Command Message from Server (String/JSON)
+#### 2. Client Configuration Message (Server -> Client)
 
-Server sends commands to client:
+Sent immediately upon connection.
 
-**Record Command (with optional duration and auto-upload):**
+**Format:**
 ```json
 {
-  "command": "record",
-  "message": "optional message content",
-  "duration": 5000,
-  "autoUpload": true
+  "type": "clientConfig",
+  "config": {
+    "videoFormat": "mp4",
+    "videoChunkDurationMs": 30000,
+    "videoBufferMaxMB": 16000
+  }
 }
 ```
 
-**Parameters:**
-- `command`: `"record"` - requests client to start recording
-- `message` (optional): Additional context displayed to user
-- `duration` (optional): Recording duration in milliseconds (default: 30000 = 30 seconds)
-- `autoUpload` (optional): Auto-upload after recording (default: false)
+#### 3. Command Message (Server -> Client)
+
+**Upload Time Range Command:**
+```json
+{
+  "command": "uploadTimeRange",
+  "startTime": 1700000000.0,
+  "endTime": 1700000060.0
+}
+```
 
 **Client Behavior:**
-- Immediately starts recording video
-- Records for specified duration
-- Automatically stops when duration expires
-- If `autoUpload` is true, uploads the recorded file to server
-- If `autoUpload` is false, saves file locally without uploading
-- Displays alert showing command parameters
+- Scans for local files overlapping the time range
+- Uploads matching files
 
 ---
 
@@ -336,28 +340,22 @@ The server provides a web-based control interface at `http://localhost:8080` for
    - Displays metadata status and received data status
    - Real-time updates every 5 seconds
 
-2. **Send Record Command**
-   - **Duration Input**: Set recording duration in milliseconds (default: 30000)
-   - **Auto Upload Checkbox**: Enable/disable automatic upload after recording (default: checked/true)
-   - **Camera Selection**: Radio buttons to choose "Front" or "Back" camera
-   - **Send Record Command Button**: Transmit the command to the selected connection
-   - All fields persist across page refreshes
-
-3. **Command Confirmation**
-   - Displays alert with connection ID, duration, and auto-upload setting
-   - Confirms successful delivery to client
+2. **Request Upload Time Range**
+   - **Start Time / End Time**: Date and time pickers to define the range of video to request.
+   - **Quick Presets**: "Last 1 min", "Last 5 mins", "Last 1 hour", "Now".
+   - **Request Upload Button**: Sends the `uploadTimeRange` command to the client.
+   - **Persistence**: Remembers selected times per connection ID.
 
 ### Example Workflow
 
 1. Navigate to `http://localhost:8080` in a web browser
 2. View connected iOS devices in the "Active Connections" section
-3. For each connection, optionally adjust the Duration (e.g., 10000 for 10 seconds)
-4. Check/uncheck the "Auto Upload" checkbox based on desired behavior
-5. Click "Send Record Command" to trigger remote recording
-6. Client receives command and automatically:
-   - Starts recording for specified duration
-   - Stops recording when time expires
-   - (If auto-upload enabled) Uploads recorded video to server
+3. Select a time range (e.g., "Last 5 mins") using the preset buttons or date pickers
+4. Click "Request Upload Time Range"
+5. Client receives command and automatically:
+   - Checks local storage for recordings within that range
+   - Uploads any matching files to the server
+   - Files appear in `uploads/` directory on the server
 
 ## Troubleshooting
 
