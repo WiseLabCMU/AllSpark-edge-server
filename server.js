@@ -17,6 +17,7 @@ let protocols = ["ws"];
 const defaultConfig = {
   hostname: "0.0.0.0",
   port: 8080,
+  serviceName: "AllSpark Service Discovery",
   keyFile: "keys/test-private.key",
   certFile: "keys/test-public.crt",
   uploadPath: "uploads/",
@@ -226,7 +227,7 @@ function heartbeat() {
   this.isAlive = true;
 }
 
-const keepAliveInterval = config.keepAliveIntervalMs || 30000;
+const keepAliveInterval = config.keepAliveIntervalMs;
 console.log(`Setting keep-alive interval to ${keepAliveInterval}ms`);
 
 const interval = setInterval(function ping() {
@@ -413,7 +414,7 @@ server.listen(config.port, config.hostname, () => {
 
   // Advertise service via Bonjour
   const bonjour = new Bonjour();
-  const serviceName = "AllSpark Server";
+  const serviceName = config.serviceName;
   console.log(`Advertising Bonjour service: ${serviceName} on port ${config.port}`);
 
   bonjour.publish({
