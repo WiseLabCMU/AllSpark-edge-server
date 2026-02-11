@@ -5,7 +5,7 @@ import ssl
 import sys
 import time
 from aiohttp import web, WSMsgType
-from zeroconf import Zeroconf, ServiceInfo
+from zeroconf import Zeroconf, ServiceInfo, IPVersion
 import netifaces
 import socket
 
@@ -309,22 +309,19 @@ if __name__ == '__main__':
     else:
         print("SSL keys not found, using HTTP")
 
-    # Start Zeroconf
-    zeroconf = Zeroconf()
-    try:
-         # Need real IP
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
+    # Need real IP
+    local_ip = socket.gethostbyname(socket.gethostname()).split('%')[0]
 
+    # Start Zeroconf
+    zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+    try:
         info = ServiceInfo(
             "_allspark._tcp.local.",
             f"{config['serviceName']}._allspark._tcp.local.",
             addresses=[socket.inet_aton(local_ip)],
             port=config['port'],
-            properties={'path': '/'},
-            server=f"{socket.gethostname()}.local."
+            properties={},
+            server=f"{local_ip}.local."
         )
         zeroconf.register_service(info)
         print(f"Advertising Bonjour service: {config['serviceName']} on {local_ip}:{config['port']}")
