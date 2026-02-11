@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const { Bonjour } = require('bonjour-service');
 
 // Load configuration
 let config;
@@ -408,4 +409,16 @@ server.listen(config.port, config.hostname, () => {
   const protocol = useSSL ? "https" : "http";
   console.log(`Server is running on ${protocol}://${config.hostname}:${config.port}`);
   console.log(`WebSocket endpoint: ${protocols[0]}://${config.hostname}:${config.port}`);
+
+  // Advertise service via Bonjour
+  const bonjour = new Bonjour();
+  const serviceName = "AllSpark Server";
+  console.log(`Advertising Bonjour service: ${serviceName} on port ${config.port}`);
+
+  bonjour.publish({
+    name: serviceName,
+    type: 'allspark',
+    port: config.port,
+    protocol: 'tcp'
+  });
 });
