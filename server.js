@@ -17,7 +17,7 @@ let protocols = ["ws"];
 const defaultConfig = {
   hostname: "0.0.0.0",
   port: 8080,
-  serviceName: "AllSpark Service Discovery",
+  serviceName: "AllSpark Server",
   keyFile: "keys/test-private.key",
   certFile: "keys/test-public.crt",
   uploadPath: "uploads/",
