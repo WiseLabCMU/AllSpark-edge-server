@@ -88,12 +88,40 @@
       min-width: 300px;
       /* Prevent squishing too much */
     }
+
+    .header-status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #333;
+      color: white;
+      padding: 10px 20px;
+      margin: -20px -20px 20px -20px;
+      /* Counteract body padding */
+      flex-wrap: wrap;
+    }
+
+    .header-item {
+      margin-right: 20px;
+      font-size: 0.9em;
+    }
+
+    .header-title {
+      font-weight: bold;
+      font-size: 1.2em;
+      margin-right: auto;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
 <body>
-  <h1>Perceptor Test Host Server</h1>
+  <div id="status-header" class="header-status">
+    <div class="header-title">Perceptor Host</div>
+    <div class="header-item">Address: <span id="hdr-address">...</span></div>
+    <div class="header-item">Uptime: <span id="hdr-uptime">...</span></div>
+    <div class="header-item">Connections: <span id="hdr-connections">...</span></div>
+  </div>
   <div class="row-container">
     <div class="info">
       <h2>Server Pairing</h2>
@@ -118,12 +146,17 @@
   </div>
 
   <script>
-    async function updateProtocolStatus() {
+    async function updateHealthStatus() {
       try {
         const response = await fetch('/api/health');
         const data = await response.json();
 
         if (data.protocols && data.protocols.length > 0) {
+          // Reset header style to online
+          const header = document.getElementById('status-header');
+          header.style.backgroundColor = '#333';
+          header.style.color = 'white';
+
           const protocolsText = data.protocols.map(p => p.toUpperCase()).join(' & ');
 
           // Update the WebSocket URL based on protocol
@@ -136,6 +169,19 @@
           // Update Server Address Display
           const textAddress = `${hostname}:${port}`;
           document.getElementById('server-address').textContent = textAddress;
+
+          // Update Header info from /api/health
+          document.getElementById('hdr-address').textContent = textAddress;
+
+          if (data.uptime !== undefined) {
+            const uptime = Math.floor(data.uptime);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            document.getElementById('hdr-uptime').textContent =
+              `${hours}h ${minutes}m ${seconds}s`;
+          }
+          // totalConnections removed from /api/health
 
           // Generate QR Code
           const qrcodeContainer = document.getElementById("qrcode");
@@ -150,6 +196,15 @@
         }
       } catch (error) {
         console.error('Error fetching protocol status:', error);
+
+        // Show Offline Status
+        const header = document.getElementById('status-header');
+        header.style.backgroundColor = '#d32f2f'; // Red
+        header.style.color = 'white';
+
+        document.getElementById('hdr-address').textContent = 'OFFLINE';
+        document.getElementById('hdr-uptime').textContent = '-';
+        document.getElementById('hdr-connections').textContent = '-';
       }
 
       // Fetch Client Config
@@ -163,12 +218,17 @@
       }
     }
 
-    async function updateStatus() {
+    async function updateConnectionStatus() {
       try {
         const response = await fetch('/api/status');
         const data = await response.json();
 
-        // Update total connections
+        // Update header connections
+        if (data.totalConnections !== undefined) {
+          document.getElementById('hdr-connections').textContent = data.totalConnections;
+        }
+
+        // Update total connections in body
         document.getElementById('total-connections').textContent = data.totalConnections;
 
         // Update connections list
@@ -226,11 +286,12 @@
     }
 
     // Update immediately on page load
-    updateProtocolStatus();
-    updateStatus();
+    updateHealthStatus();
+    updateConnectionStatus();
 
     // Then update every 5 seconds
-    setInterval(updateStatus, 5000);
+    setInterval(updateHealthStatus, 5000);
+    setInterval(updateConnectionStatus, 5000);
 
     function formatFileSize(bytes) {
       if (!bytes) return 'Unknown';
