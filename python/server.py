@@ -13,7 +13,7 @@ import socket
 CONFIG_FILE = "../config.json"
 DEFAULT_CONFIG = {
     "hostname": "0.0.0.0",
-    "port": 8888,
+    "port": 8080,
     "serviceName": "AllSpark Server",
     "keyFile": "keys/test-private.key",
     "certFile": "keys/test-public.crt",
