@@ -419,8 +419,6 @@ wss.on("connection", function connection(ws) {
 // Start the HTTP server
 server.listen(config.port, config.hostname, () => {
   const protocol = useSSL ? "https" : "http";
-  console.log(`Server is running on ${protocol}://${config.hostname}:${config.port}`);
-  console.log(`WebSocket endpoint: ${protocols[0]}://${config.hostname}:${config.port}`);
 
   // Advertise service via Bonjour
   const bonjour = new Bonjour();
@@ -439,6 +437,8 @@ server.listen(config.port, config.hostname, () => {
     if (localIP !== "0.0.0.0") break;
   }
 
+  console.log(`Server is running on ${protocol}://${config.hostname}:${config.port}`);
+  console.log(`WebSocket endpoint: ${protocols[0]}://${localIP}:${config.port}`);
   console.log(`Advertising Bonjour service: ${serviceName} on ${localIP}:${config.port}`);
 
   bonjour.publish({

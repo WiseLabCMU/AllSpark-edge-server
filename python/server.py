@@ -310,7 +310,20 @@ if __name__ == '__main__':
         print("SSL keys not found, using HTTP")
 
     # Need real IP
-    local_ip = socket.gethostbyname(socket.gethostname()).split('%')[0]
+    local_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # doesn't even have to be reachable
+        s.connect(('10.255.255.255', 1))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    protocol = "https" if use_ssl else "http"
+    ws_protocol = "wss" if use_ssl else "ws"
+    print(f"Server is running on {protocol}://{config['hostname']}:{config['port']}")
+    print(f"WebSocket endpoint: {ws_protocol}://{local_ip}:{config['port']}")
 
     # Start Zeroconf
     zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
