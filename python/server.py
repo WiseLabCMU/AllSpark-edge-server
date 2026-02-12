@@ -66,12 +66,26 @@ async def handle_index(request):
         return web.FileResponse(index_path)
     return web.Response(text="index.html not found", status=404)
 
+def get_local_ip():
+    local_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # doesn't even have to be reachable
+        s.connect(('10.255.255.255', 1))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+    return local_ip
+
 async def handle_health(request):
     return web.json_response({
         "status": "ok",
         "timestamp": time.time(),
         "uptime": time.time() - start_time,
-        "protocols": ["wss"] if use_ssl else ["ws"]
+        "protocols": ["wss"] if use_ssl else ["ws"],
+        "address": get_local_ip(),
+        "port": config["port"]
     })
 
 async def handle_status(request):
@@ -309,16 +323,8 @@ if __name__ == '__main__':
     else:
         print("SSL keys not found, using HTTP")
 
-    # Need real IP
-    local_ip = "127.0.0.1"
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # doesn't even have to be reachable
-        s.connect(('10.255.255.255', 1))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        pass
+    # Need local IP
+    local_ip = get_local_ip()
 
     protocol = "https" if use_ssl else "http"
     ws_protocol = "wss" if use_ssl else "ws"

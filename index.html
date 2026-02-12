@@ -72,10 +72,18 @@
       margin-top: 10px;
     }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
 <body>
   <h1>Perceptor Test Host Server</h1>
+  <div class="info">
+    <h2>Server Pairing</h2>
+    <p>Scan this QR code with the AllSpark app to connect:</p>
+    <div id="qrcode" style="margin-top: 10px;"></div>
+    <p style="margin-top: 10px; font-size: 0.9em; color: #666;">Address: <code id="server-address">Loading...</code></p>
+  </div>
+
   <div class="info">
     <h2>Client Configuration</h2>
     <p>Connected clients will receive the following configuration:</p>
@@ -112,10 +120,24 @@
 
           // Update the WebSocket URL based on protocol
           const protocol = data.protocols[0];
-          const hostname = window.location.hostname || 'localhost';
-          const port = window.location.port || 8080;
+          // Use valid address from server if available, else fallback
+          const hostname = data.address || window.location.hostname || 'localhost';
+          const port = data.port || window.location.port || 8080;
           const wsUrl = `${protocol}://${hostname}:${port}`;
           document.getElementById('ws-url').textContent = wsUrl;
+
+          // Update Server Address Display
+          const textAddress = `${hostname}:${port}`;
+          document.getElementById('server-address').textContent = textAddress;
+
+          // Generate QR Code
+          const qrcodeContainer = document.getElementById("qrcode");
+          qrcodeContainer.innerHTML = ""; // Clear existing
+          new QRCode(qrcodeContainer, {
+            text: textAddress,
+            width: 128,
+            height: 128
+          });
         }
       } catch (error) {
         console.error('Error fetching protocol status:', error);

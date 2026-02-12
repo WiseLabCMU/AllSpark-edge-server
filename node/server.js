@@ -424,7 +424,7 @@ server.listen(config.port, config.hostname, () => {
   const bonjour = new Bonjour();
   const serviceName = config.serviceName;
 
-  // Find local IP
+  // Need local IP
   let localIP = "0.0.0.0";
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
