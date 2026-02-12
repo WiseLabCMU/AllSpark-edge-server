@@ -71,34 +71,43 @@
       color: #999;
       margin-top: 10px;
     }
+
+    .row-container {
+      display: flex;
+      flex-wrap: wrap;
+      /* Allow wrapping on small screens */
+      gap: 20px;
+      margin: 20px 0;
+    }
+
+    /* Make info boxes inside row-container take equal width */
+    .row-container .info {
+      flex: 1;
+      margin: 0;
+      /* Remove default margin as row-container handles spacing */
+      min-width: 300px;
+      /* Prevent squishing too much */
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
 <body>
   <h1>Perceptor Test Host Server</h1>
-  <div class="info">
-    <h2>Server Pairing</h2>
-    <p>Scan this QR code with the AllSpark app to connect:</p>
-    <div id="qrcode" style="margin-top: 10px;"></div>
-    <p style="margin-top: 10px; font-size: 0.9em; color: #666;">Address: <code id="server-address">Loading...</code></p>
-  </div>
+  <div class="row-container">
+    <div class="info">
+      <h2>Server Pairing</h2>
+      <p>Scan this QR code with the AllSpark app to connect:</p>
+      <div id="qrcode" style="margin-top: 10px;"></div>
+      <p style="margin-top: 10px; font-size: 0.9em; color: #666;">Address: <code id="server-address">Loading...</code>
+      </p>
+    </div>
 
-  <div class="info">
-    <h2>Client Configuration</h2>
-    <p>Connected clients will receive the following configuration:</p>
-    <pre id="client-config-display">Loading...</pre>
-  </div>
-
-  <div class="info">
-    <h2>WebSocket Connection</h2>
-    <p>The server is ready to accept WebSocket connections at <code id="ws-url">ws://localhost:8080</code></p>
-    <p>Supported protocols: <strong id="protocols-status">Loading...</strong></p>
-    <p>This server accepts video file uploads via WebSocket with the following protocol:</p>
-    <ol>
-      <li>Send metadata as JSON: <code>{"filename": "video.mp4"}</code></li>
-      <li>Send binary video data</li>
-    </ol>
+    <div class="info">
+      <h2>Client Configuration</h2>
+      <p>Connected clients will receive the following configuration:</p>
+      <pre id="client-config-display">Loading...</pre>
+    </div>
   </div>
 
   <div class="connections">
@@ -116,7 +125,6 @@
 
         if (data.protocols && data.protocols.length > 0) {
           const protocolsText = data.protocols.map(p => p.toUpperCase()).join(' & ');
-          document.getElementById('protocols-status').textContent = protocolsText;
 
           // Update the WebSocket URL based on protocol
           const protocol = data.protocols[0];
@@ -124,7 +132,6 @@
           const hostname = data.address || window.location.hostname || 'localhost';
           const port = data.port || window.location.port || 8080;
           const wsUrl = `${protocol}://${hostname}:${port}`;
-          document.getElementById('ws-url').textContent = wsUrl;
 
           // Update Server Address Display
           const textAddress = `${hostname}:${port}`;
@@ -132,16 +139,17 @@
 
           // Generate QR Code
           const qrcodeContainer = document.getElementById("qrcode");
-          qrcodeContainer.innerHTML = ""; // Clear existing
-          new QRCode(qrcodeContainer, {
-            text: textAddress,
-            width: 128,
-            height: 128
-          });
+          if (qrcodeContainer) {
+            qrcodeContainer.innerHTML = ""; // Clear existing
+            new QRCode(qrcodeContainer, {
+              text: textAddress,
+              width: 128,
+              height: 128
+            });
+          }
         }
       } catch (error) {
         console.error('Error fetching protocol status:', error);
-        document.getElementById('protocols-status').textContent = 'Unable to determine';
       }
 
       // Fetch Client Config

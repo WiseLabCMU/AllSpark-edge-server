@@ -127,6 +127,19 @@ if (config.keyFile && config.certFile) {
   }
 }
 
+// Helper to find local IP
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "0.0.0.0";
+}
+
 const server = useSSL ? https.createServer(serverOptions, requestHandler) : http.createServer(requestHandler);
 
 function requestHandler(req, res) {
@@ -149,7 +162,9 @@ function requestHandler(req, res) {
       status: "ok",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      protocols: protocols
+      protocols: protocols,
+      address: getLocalIP(),
+      port: config.port
     }));
   } else if (req.method === "GET" && req.url === "/api/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -425,17 +440,7 @@ server.listen(config.port, config.hostname, () => {
   const serviceName = config.serviceName;
 
   // Need local IP
-  let localIP = "0.0.0.0";
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        localIP = iface.address;
-        break;
-      }
-    }
-    if (localIP !== "0.0.0.0") break;
-  }
+  const localIP = getLocalIP();
 
   console.log(`Server is running on ${protocol}://${config.hostname}:${config.port}`);
   console.log(`WebSocket endpoint: ${protocols[0]}://${localIP}:${config.port}`);
