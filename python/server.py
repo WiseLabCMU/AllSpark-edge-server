@@ -177,6 +177,15 @@ async def websocket_handler(request):
                         await ws.send_json({"status": "success", "message": "Test message received"})
 
                     elif data.get("type") == "chunkSaved":
+                        # Broadcast to connected agents
+                        for cid, client_ws in client_connections.items():
+                            if cid != connection_id:
+                                client_state = upload_states.get(cid, {})
+                                if client_state.get("clientName") == "agent":
+                                    try:
+                                        await client_ws.send_json(data)
+                                    except Exception:
+                                        pass
                         await ws.send_json({"status": "success", "message": "Chunk saved info received"})
 
                     elif data.get("type") == "upload":
@@ -286,6 +295,7 @@ async def init_app():
     app.router.add_get('/api/status', handle_status)
     app.router.add_get('/api/config', handle_config)
     app.router.add_post('/api/command/{connection_id}', handle_command_post)
+    app.router.add_static('/third-party', path=os.path.join("..", "third-party"), name='third-party')
 
     # Actually wait, client connects to wss://host:port/. So root is correct for WS?
     # But I also have handle_index on root.

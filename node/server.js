@@ -158,6 +158,25 @@ function requestHandler(req, res) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(htmlContent);
     });
+  } else if (req.method === "GET" && req.url.startsWith("/third-party/")) {
+    const assetPath = path.join(__dirname, "..", req.url);
+    const ext = path.extname(assetPath).toLowerCase();
+    const mimeTypes = {
+      '.css': 'text/css',
+      '.js': 'text/javascript',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf'
+    };
+
+    fs.readFile(assetPath, (err, content) => {
+      if (err) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("404 - Not Found");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": mimeTypes[ext] || 'application/octet-stream' });
+      res.end(content);
+    });
   } else if (req.method === "GET" && req.url === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
@@ -298,7 +317,7 @@ wss.on("connection", function connection(ws) {
   ws.on("message", function incoming(message) {
     const state = uploadStates.get(connectionId);
 
-    console.log(`Message received - Type: ${typeof message}, IsBuffer: ${Buffer.isBuffer(message)}, Length: ${message.length || message.toString().length}`);
+    console.log(`Message received - Type: ${typeof message}, Length: ${message.length || message.toString().length}`);
 
     // Check if message is a string (metadata)
     let isStringMessage = false;
@@ -339,6 +358,15 @@ wss.on("connection", function connection(ws) {
 
         // Check if this is a chunkSaved message
         if (parsedMessage.type === "chunkSaved") {
+          // Broadcast to connected agents
+          clientConnections.forEach((clientWs, cid) => {
+            if (cid !== connectionId && clientWs.readyState === WebSocket.OPEN) {
+              const clientState = uploadStates.get(cid);
+              if (clientState && clientState.clientName === "agent") {
+                clientWs.send(message); // send the original message string
+              }
+            }
+          });
           ws.send(JSON.stringify({ status: "success", message: "Chunk saved info received" }));
           return;
         }

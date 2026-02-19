@@ -1,11 +1,11 @@
-# Perceptor Host Test Server
+# AllSpark Edge Server
 
-This server provides HTTP and WebSocket endpoints for testing perceptor functionality, including video file uploads and remote command execution.
+This server provides HTTP and WebSocket endpoints for testing AllSpark functionality, including video file uploads and remote command execution.
 
 ## Directory Structure
 
 ```
-tests/perceptor-host-test/
+AllSpark-edge-server/
 ├── config.json         (Shared configuration)
 ├── index.html          (Shared web interface)
 ├── keys/               (Shared SSL certificates)

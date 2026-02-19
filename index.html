@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <title>Perceptor Test Host</title>
+  <title>AllSpark Edge Server</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -128,29 +128,18 @@
       color: white;
     }
 
-    .protocol-secure::before {
-      content: "\1F512";
-      /* Lock icon */
-      margin-right: 5px;
-    }
-
     .protocol-insecure {
       background-color: #ff9800;
       color: white;
     }
-
-    .protocol-insecure::before {
-      content: "\1F513";
-      /* Unlock icon */
-      margin-right: 5px;
-    }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link rel="stylesheet" href="/third-party/fontawesome.min.css" />
+  <script src="/third-party/qrcode.min.js"></script>
 </head>
 
 <body>
   <div id="status-header" class="header-status">
-    <div class="header-title">Perceptor Host</div>
+    <div class="header-title">AllSpark Edge Server</div>
     <div class="header-item">Address: <span id="hdr-address">...</span></div>
     <div class="header-item">Protocol: <span id="hdr-protocol">...</span></div>
     <div class="header-item">Uptime: <span id="hdr-uptime">...</span></div>
@@ -173,7 +162,7 @@
   </div>
 
   <div class="connections">
-    <h2>Active Connections</h2>
+    <h2>Active Connections and Event Tests</h2>
     <p>Total connections: <strong id="total-connections">0</strong></p>
     <div id="connections-list"></div>
     <div class="last-updated">Last updated: <span id="last-updated">loading...</span></div>
@@ -215,8 +204,9 @@
           // Determine security based on protocol
           const isSecure = primaryProtocol === 'wss' || primaryProtocol === 'https';
           const protocolName = primaryProtocol.toUpperCase();
+          const iconHtml = isSecure ? '<i class="fas fa-lock" style="margin-right: 5px;"></i>' : '<i class="fas fa-unlock" style="margin-right: 5px;"></i>';
 
-          protocolEl.textContent = protocolName;
+          protocolEl.innerHTML = `${iconHtml}${protocolName}`;
           protocolEl.className = isSecure ? 'protocol-indicator protocol-secure' : 'protocol-indicator protocol-insecure';
 
           if (data.uptime !== undefined) {
@@ -286,8 +276,8 @@
         } else {
           connectionsList.innerHTML = data.connections.map(conn => {
             // Preserve existing start/end time from DOM or localStorage
-            const startKey = `perceptor_start_${conn.id}`;
-            const endKey = `perceptor_end_${conn.id}`;
+            const startKey = `allspark_start_${conn.id}`;
+            const endKey = `allspark_end_${conn.id}`;
 
             const existingStart = document.getElementById(`startTime-${conn.id}`);
             const currentStart = existingStart ? existingStart.value : (localStorage.getItem(startKey) || "");
@@ -368,7 +358,7 @@
     }
 
     function persistTime(connectionId, type, value) {
-      const key = type === 'start' ? `perceptor_start_${connectionId}` : `perceptor_end_${connectionId}`;
+      const key = type === 'start' ? `allspark_start_${connectionId}` : `allspark_end_${connectionId}`;
       localStorage.setItem(key, value);
     }
 
