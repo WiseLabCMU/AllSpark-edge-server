@@ -1,12 +1,10 @@
-import asyncio
 import json
+import logging
 import os
 import ssl
-import sys
 import time
 from aiohttp import web, WSMsgType
 from zeroconf import Zeroconf, ServiceInfo, IPVersion
-import netifaces
 import socket
 
 # Constants
@@ -39,7 +37,7 @@ def load_config():
     config_path = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 user_config = json.load(f)
                 # Deep merge would be better, but simple update for now
                 config.update(user_config)
@@ -319,9 +317,9 @@ if __name__ == '__main__':
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
         use_ssl = True
-        print("SSL enabled")
+        print("SSL certificates loaded successfully")
     else:
-        print("SSL keys not found, using HTTP")
+        print("\033[33mSSL keys not found, using HTTP\033[0m")
 
     # Need local IP
     local_ip = get_local_ip()
@@ -330,6 +328,7 @@ if __name__ == '__main__':
     ws_protocol = "wss" if use_ssl else "ws"
     print(f"Server is running on {protocol}://{config['hostname']}:{config['port']}")
     print(f"WebSocket endpoint: {ws_protocol}://{local_ip}:{config['port']}")
+    print(f"Setting keep-alive interval to {config['keepAliveIntervalMs']}ms")
 
     # Start Zeroconf
     zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
@@ -346,6 +345,21 @@ if __name__ == '__main__':
         print(f"Advertising Bonjour service: {config['serviceName']} on {local_ip}:{config['port']}")
     except Exception as e:
         print(f"Failed to start Zeroconf: {e}")
+
+    # Silence noisy SSL handshake errors on HTTP port
+    class TLSHandshakeFilter(logging.Filter):
+        def filter(self, record):
+            if record.exc_info:
+                exc_type, exc_value, _ = record.exc_info
+                if "BadStatusLine" in str(exc_type) and "Invalid method encountered" in str(exc_value):
+                    # Check for TLS handshake bytes (0x16 = Handshake, 0x03 = SSL 3.0/TLS 1.x)
+                    if "\\x16\\x03\\x01" in str(exc_value) or "\\x16\\x03\\x03" in str(exc_value):
+                        return False
+            return True
+
+    logging.basicConfig(level=logging.INFO)
+    aiohttp_logger = logging.getLogger("aiohttp.server")
+    aiohttp_logger.addFilter(TLSHandshakeFilter())
 
     try:
         web.run_app(init_app(), port=config["port"], ssl_context=ssl_context, access_log=None)

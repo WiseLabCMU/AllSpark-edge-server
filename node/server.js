@@ -121,6 +121,8 @@ if (config.keyFile && config.certFile) {
       useSSL = true;
       protocols = ["wss"];
       console.log("SSL certificates loaded successfully");
+    } else {
+      console.log("\x1b[33mSSL keys not found, using HTTP\x1b[0m");
     }
   } catch (err) {
     console.warn("Failed to load SSL certificates:", err.message);
