@@ -2,6 +2,7 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
   <title>Perceptor Test Host</title>
   <style>
     body {
@@ -111,6 +112,38 @@
       font-size: 1.2em;
       margin-right: auto;
     }
+
+    .protocol-indicator {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-family: monospace;
+      margin-left: 5px;
+    }
+
+    .protocol-secure {
+      background-color: #4caf50;
+      color: white;
+    }
+
+    .protocol-secure::before {
+      content: "\1F512";
+      /* Lock icon */
+      margin-right: 5px;
+    }
+
+    .protocol-insecure {
+      background-color: #ff9800;
+      color: white;
+    }
+
+    .protocol-insecure::before {
+      content: "\1F513";
+      /* Unlock icon */
+      margin-right: 5px;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
@@ -119,6 +152,7 @@
   <div id="status-header" class="header-status">
     <div class="header-title">Perceptor Host</div>
     <div class="header-item">Address: <span id="hdr-address">...</span></div>
+    <div class="header-item">Protocol: <span id="hdr-protocol">...</span></div>
     <div class="header-item">Uptime: <span id="hdr-uptime">...</span></div>
     <div class="header-item">Connections: <span id="hdr-connections">...</span></div>
   </div>
@@ -173,6 +207,18 @@
           // Update Header info from /api/health
           document.getElementById('hdr-address').textContent = textAddress;
 
+          // Update Protocol Display
+          const protocolEl = document.getElementById('hdr-protocol');
+          // Start with the main protocol (wss or ws)
+          let primaryProtocol = data.protocols.find(p => p.startsWith('ws')) || data.protocols[0] || 'unknown';
+
+          // Determine security based on protocol
+          const isSecure = primaryProtocol === 'wss' || primaryProtocol === 'https';
+          const protocolName = primaryProtocol.toUpperCase();
+
+          protocolEl.textContent = protocolName;
+          protocolEl.className = isSecure ? 'protocol-indicator protocol-secure' : 'protocol-indicator protocol-insecure';
+
           if (data.uptime !== undefined) {
             const uptime = Math.floor(data.uptime);
             const hours = Math.floor(uptime / 3600);
@@ -203,6 +249,8 @@
         header.style.color = 'white';
 
         document.getElementById('hdr-address').textContent = 'OFFLINE';
+        document.getElementById('hdr-protocol').textContent = '-';
+        document.getElementById('hdr-protocol').className = '';
         document.getElementById('hdr-uptime').textContent = '-';
         document.getElementById('hdr-connections').textContent = '-';
       }
