@@ -358,12 +358,16 @@ wss.on("connection", function connection(ws) {
 
         // Check if this is a chunkSaved message
         if (parsedMessage.type === "chunkSaved") {
+          // Add sender's connectionId so agents know who to request uploads from
+          const broadcastData = { ...parsedMessage, connectionId: connectionId };
+          const broadcastString = JSON.stringify(broadcastData);
+
           // Broadcast to connected agents
           clientConnections.forEach((clientWs, cid) => {
             if (cid !== connectionId && clientWs.readyState === WebSocket.OPEN) {
               const clientState = uploadStates.get(cid);
               if (clientState && clientState.clientName === "agent") {
-                clientWs.send(message); // send the original message string
+                clientWs.send(broadcastString); // send the enriched message string
               }
             }
           });

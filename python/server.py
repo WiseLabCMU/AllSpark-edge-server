@@ -177,13 +177,17 @@ async def websocket_handler(request):
                         await ws.send_json({"status": "success", "message": "Test message received"})
 
                     elif data.get("type") == "chunkSaved":
+                        # Add sender's connectionId so agents know who to request uploads from
+                        broadcast_data = dict(data)
+                        broadcast_data["connectionId"] = connection_id
+
                         # Broadcast to connected agents
                         for cid, client_ws in client_connections.items():
                             if cid != connection_id:
                                 client_state = upload_states.get(cid, {})
                                 if client_state.get("clientName") == "agent":
                                     try:
-                                        await client_ws.send_json(data)
+                                        await client_ws.send_json(broadcast_data)
                                     except Exception:
                                         pass
                         await ws.send_json({"status": "success", "message": "Chunk saved info received"})
