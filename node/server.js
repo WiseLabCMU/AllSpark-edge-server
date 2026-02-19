@@ -19,9 +19,9 @@ const defaultConfig = {
   hostname: "0.0.0.0",
   port: 8080,
   serviceName: "AllSpark Server",
-  keyFile: "../keys/test-private.key",
-  certFile: "../keys/test-public.crt",
-  uploadPath: "../uploads/",
+  keyFile: "keys/test-private.key",
+  certFile: "keys/test-public.crt",
+  uploadPath: "uploads/",
   keepAliveIntervalMs: 5000,
   clientConfig: {
     videoFormat: "mp4",

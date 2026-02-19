@@ -1,11 +1,12 @@
 import json
 import logging
 import os
+import socket
 import ssl
 import time
-from aiohttp import web, WSMsgType
-from zeroconf import Zeroconf, ServiceInfo, IPVersion
-import socket
+
+from aiohttp import WSMsgType, web
+from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
 # Constants
 CONFIG_FILE = "../config.json"
