@@ -167,7 +167,7 @@ async def websocket_handler(request):
             if msg.type == WSMsgType.TEXT:
                 try:
                     data = json.loads(msg.data)
-                    print(f"Received message from {connection_id}: {data}")
+                    print(f"Received message from {connection_id}:\n{json.dumps(data, indent=2)}")
 
                     if data.get("type") == "clientInfo":
                         state["clientName"] = data.get("clientName")
@@ -175,6 +175,9 @@ async def websocket_handler(request):
 
                     elif data.get("type") == "test":
                         await ws.send_json({"status": "success", "message": "Test message received"})
+
+                    elif data.get("type") == "chunkSaved":
+                        await ws.send_json({"status": "success", "message": "Chunk saved info received"})
 
                     elif data.get("type") == "upload":
                         if "filename" not in data:

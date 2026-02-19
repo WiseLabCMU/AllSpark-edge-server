@@ -321,7 +321,7 @@ wss.on("connection", function connection(ws) {
       // First message: metadata, test message, or client info as JSON string
       try {
         const parsedMessage = JSON.parse(message);
-        console.log(`Received message:`, parsedMessage);
+        console.log(`Received message from ${connectionId}:\n${JSON.stringify(parsedMessage, null, 2)}`);
 
         // Check if this is a client info message
         if (parsedMessage.type === "clientInfo") {
@@ -337,9 +337,15 @@ wss.on("connection", function connection(ws) {
           return;
         }
 
+        // Check if this is a chunkSaved message
+        if (parsedMessage.type === "chunkSaved") {
+          ws.send(JSON.stringify({ status: "success", message: "Chunk saved info received" }));
+          return;
+        }
+
         // Otherwise treat as metadata for upload
         if (parsedMessage.type !== "upload" && !parsedMessage.filename) {
-          ws.send(JSON.stringify({ status: "error", message: "Invalid message format. Expected type: 'upload' or 'test'" }));
+          ws.send(JSON.stringify({ status: "error", message: "Invalid message format. Expected type: 'upload', 'test', or 'chunkSaved'" }));
           console.error("Invalid message format");
           return;
         }
