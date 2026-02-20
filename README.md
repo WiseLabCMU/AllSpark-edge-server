@@ -5,6 +5,21 @@ This server provides HTTP and WebSocket endpoints for testing AllSpark functiona
 > [!IMPORTANT]
 > The AllSpark system consists of this edge server and the [AllSpark iOS App](https://github.com/WiseLabCMU/AllSpark-iOS). For compatibility reasons, please ensure that you run release versions of both repositories that share at least the same minor semantic version tag (e.g., `v0.3.x` of the server with `v0.3.x` of the iOS app).
 
+## Quick Start Python
+
+```bash
+cd python
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python server.py
+```
+
+Then, open [http://localhost:8080](http://localhost:8080) in your web browser to view the control interface. [Node.js](docs/node_quickstart.md) is also supported.
+
+### Agentic Processing Test
+
+To test the edge server simulating an agent processing incoming videos, you can run the [Agent Client Example](examples/agent_client/README.md).
+
 ## Directory Structure
 
 ```
@@ -47,9 +62,9 @@ Both servers read configuration from `config.json` in the project root (parent o
   "hostname": "0.0.0.0",
   "port": 8080,
   "serviceName": "AllSpark Server",
-  "keyFile": "../keys/test-private.key",
-  "certFile": "../keys/test-public.crt",
-  "uploadPath": "../uploads/",
+  "keyFile": "keys/test-private.key",
+  "certFile": "keys/test-public.crt",
+  "uploadPath": "uploads/",
   "clientConfig": {
     "videoFormat": "mp4",
     "videoChunkDurationMs": 30000,
