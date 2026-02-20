@@ -51,12 +51,12 @@ ios ..> bonjour : Discovers Server
 ios ..> qrcode : Scans Address
 
 ' Current active protocols
-ios == httpport : Initial Health Checks (GET)
-ios <==> wsport : Secure WS stream
+ios == httpport : HTTPS
+ios <==> wsport : WSS
 
 ' Planned implementations
-rpi <==> wsport : Planned Integration
-nano <==> wsport : Planned Integration
+rpi .[#red,thickness=2].> wsport : WSS
+nano .[#red,thickness=2].> wsport : WSS
 
 ' Future Plans
 agent .[#red,thickness=2].> ios : QUIC

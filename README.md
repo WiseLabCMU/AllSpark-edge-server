@@ -32,6 +32,8 @@ AllSpark-edge-server/
 - **Remote Commands**: Send commands to clients to request video uploads for specific time ranges.
 - **Dual Implementation**: Available in both Node.js and Python (aiohttp).
 
+![AllSpark Edge Server Architecture](docs/architecture.png)
+
 ## Configuration
 
 Both servers read configuration from `config.json` in the project root (parent of the server directories). If the file is not found, defaults are used.

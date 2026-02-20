@@ -1,0 +1,16 @@
+{
+    "packages": {
+        ".": {
+            "release-type": "simple",
+            "release-as": "0.3.0",
+            "extra-files": [
+                {
+                    "type": "json",
+                    "path": "node/package.json",
+                    "jsonpath": "$.version"
+                },
+                "python/version.py"
+            ]
+        }
+    }
+}
