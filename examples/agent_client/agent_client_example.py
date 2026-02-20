@@ -1,8 +1,10 @@
-import asyncio
-import aiohttp
-import json
 import argparse
+import asyncio
+import json
 import sys
+
+import aiohttp
+
 
 async def main(url):
     print(f"Fetching server status from REST API: {url}/api/status ...")
