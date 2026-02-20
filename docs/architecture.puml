@@ -14,8 +14,8 @@ title AllSpark Edge System Architecture
 
 node "AllSpark Perceptor Computer" as perceptor #E3F2FD {
     component "AllSpark Edge Server" as edgeserver #BBDEFB {
-        port "HTTP / HTTPS" as httpport
-        port "WS / WSS" as wsport
+        port "HTTP" as httpport
+        port "WS" as wsport
     }
 
     component "Agent Client\n(Autonomous Controller)" as agent #C8E6C9
@@ -35,33 +35,52 @@ cloud "Local Network Discovery" as network #F5F5F5 {
 edgeserver ..> bonjour : Advertises Service
 edgeserver ..> qrcode : Encodes Address
 
-node "iOS Device" as ios_node #F3E5F5 {
-    component "AllSpark iOS Client" as ios #E1BEE7
-}
+package "Edge Clients" {
+    node "iOS Device" as ios_node #F3E5F5 {
+        component "AllSpark iOS Client" as ios #E1BEE7
+    }
 
-node "Raspberry Pi" <<Future>> as rpi_node #FFF3E0 {
-    component "Potential rPi Client" as rpi #FFE0B2
-}
+    node "Raspberry Pi" <<Future>> as rpi_node #FFF3E0 {
+        component "Potential rPi Client" as rpi #FFE0B2
+    }
 
-node "Nvidia Nano" <<Future>> as nano_node #E8F5E9 {
-    component "Potential Nano Client" as nano #C8E6C9
+    node "Nvidia Nano" <<Future>> as nano_node #E8F5E9 {
+        component "Potential Nano Client" as nano #C8E6C9
+    }
 }
 
 ios ..> bonjour : Discovers Server
 ios ..> qrcode : Scans Address
 
 ' Current active protocols
-ios == httpport : HTTPS
-ios <==> wsport : WSS
+ios == httpport : HTTP
+ios <==> wsport : WS
+
+note right of edgeserver
+  Secure transport (WSS/HTTPS) is
+  easy to configure for the server.
+end note
+
+note right of ios
+  Clients connect opportunistically,
+  trying secure transport (WSS/HTTPS)
+  before unsecure (WS/HTTP).
+end note
+
+note bottom of network
+  iOS may have trouble resolving .local addresses
+  on some static LAN setups. Consider using
+  other local domains like .lan if issues arise.
+end note
 
 ' Planned implementations
-rpi .[#red,thickness=2].> wsport : WSS
-nano .[#red,thickness=2].> wsport : WSS
+rpi .[#red,thickness=2].> wsport : WS
+nano .[#red,thickness=2].> wsport : WS
 
 ' Future Plans
-agent .[#red,thickness=2].> ios : QUIC
-agent .[#red,thickness=2].> rpi : QUIC
-agent .[#red,thickness=2].> nano : QUIC
+edgeserver .[#red,thickness=2].> ios : QUIC
+edgeserver .[#red,thickness=2].> rpi : QUIC
+edgeserver .[#red,thickness=2].> nano : QUIC
 
 legend bottom right
   **Legend of Line Styles:**
