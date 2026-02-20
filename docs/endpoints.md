@@ -180,6 +180,18 @@ Sent immediately upon connection.
 - Scans for local files overlapping the time range
 - Uploads matching files
 
+**Record Command (Generic):**
+```json
+{
+  "command": "record",
+  "message": "Optional additional context or instructions"
+}
+```
+
+**Client Behavior:**
+- Starts recording with optional duration and auto-upload
+- Displays command notification to user
+
 ---
 
 #### 2. Metadata Message (String/JSON)
@@ -189,9 +201,15 @@ Client sends metadata for the file upload:
 ```json
 {
   "filename": "video.mp4",
-  "type": "video/mp4"
+  "filesize": 1048576,
+  "mimetype": "video/mp4"
 }
 ```
+
+**Parameters:**
+- `filename` (required): Name of the file to save
+- `filesize` (optional): Size of the incoming binary file in bytes
+- `mimetype` (optional): The MIME type of the file (e.g., `"video/mp4"` or `"video/quicktime"`)
 
 **Server Response on Success:**
 - Acknowledgment is implicit; server begins accepting binary data

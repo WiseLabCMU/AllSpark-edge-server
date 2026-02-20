@@ -2,6 +2,9 @@
 
 This server provides HTTP and WebSocket endpoints for testing AllSpark functionality, including video file uploads and remote command execution.
 
+> [!IMPORTANT]
+> The AllSpark system consists of this edge server and the [AllSpark iOS App](https://github.com/WiseLabCMU/AllSpark-iOS). For compatibility reasons, please ensure that you run release versions of both repositories that share at least the same minor semantic version tag (e.g., `v0.3.x` of the server with `v0.3.x` of the iOS app).
+
 ## Directory Structure
 
 ```
