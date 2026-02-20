@@ -25,12 +25,12 @@ pip install -r requirements.txt
 python agent_client_example.py
 ```
 
-By default, the script looks for `../../config.json` to configure the hostname, port, and security (SSL/TLS) preferences.
+By default, the script connects to `http://127.0.0.1:8080`.
 
-You can also pass explicit command line overrides:
+You can also pass an explicit server URL:
 ```bash
-# Provide a custom path to a configuration file
-python agent_client_example.py -c ../../config.json
+# Provide a custom server URL
+python agent_client_example.py -u https://127.0.0.1:8443
 ```
 3. Boot up the iOS app and connect it to the server.
 4. Begin recording clips. When clips finish mapping, you will see the `chunkSaved` payloads output to your terminal instantly by the agent!
