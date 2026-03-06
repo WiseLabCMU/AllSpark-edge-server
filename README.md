@@ -1,11 +1,13 @@
 # AllSpark Edge Server
 
-This server provides HTTP and WebSocket endpoints for testing AllSpark functionality, including video file uploads and remote command execution.
+This server provides HTTP and WebSocket endpoints for AllSpark video capture, upload, and remote command execution.
 
 > [!IMPORTANT]
 > The AllSpark system consists of this edge server and the [AllSpark iOS App](https://github.com/WiseLabCMU/AllSpark-iOS). For compatibility reasons, please ensure that you run release versions of both repositories that share at least the same minor semantic version tag (e.g., `v0.3.x` of the server with `v0.3.x` of the iOS app).
 
-## Quick Start Python
+For detailed architecture diagrams, feature requirements, and source file index, see **[REQUIREMENTS.md](REQUIREMENTS.md)**.
+
+## Quick Start (Python)
 
 ```bash
 cd python
@@ -14,11 +16,9 @@ pip install -r requirements.txt
 python server.py
 ```
 
-Then, open [http://localhost:8080](http://localhost:8080) in your web browser to view the control interface. [Node.js](docs/node_quickstart.md) is also supported.
+Then open [http://localhost:8080](http://localhost:8080) to view the web control interface. [Node.js](docs/node_quickstart.md) is also supported.
 
-### Agentic Processing Test
-
-To test the edge server simulating an agent processing incoming videos, you can run the [Agent Client Example](examples/agent_client/README.md).
+To test agentic processing of incoming videos, see the [Agent Client Example](examples/agent_client/README.md).
 
 ## Directory Structure
 
@@ -26,63 +26,33 @@ To test the edge server simulating an agent processing incoming videos, you can 
 AllSpark-edge-server/
 ├── config.json         (Shared configuration)
 ├── index.html          (Shared web interface)
-├── docs/               (Documentation and images)
+├── REQUIREMENTS.md     (Architecture & requirements)
+├── docs/               (Protocol docs and images)
 ├── examples/           (Example clients and scripts)
-├── keys/               (Shared SSL certificates)
+├── keys/               (SSL certificates)
 ├── third-party/        (Local frontend dependencies)
-├── uploads/            (Shared upload directory)
-├── node/               (Node.js Server implementation)
-└── python/             (Python Server implementation)
+├── uploads/            (Upload directory, auto-created)
+├── node/               (Node.js server implementation)
+└── python/             (Python server implementation)
 ```
 
-## Requirements
-- Node.js
-- Python 3
+## Prerequisites
+
+- Python 3 **or** Node.js
 - OpenSSL (for generating test certificates)
-
-## Features
-- **HTTP & WebSocket Server**: Handles connection upgrades and video stream uploads.
-- **Bonjour/mDNS Advertising**: Automatically advertises service as `_allspark._tcp` for client discovery.
-- **Client Configuration Sync**: Pushes configuration (chunk duration, storage limits) to connected clients.
-- **Remote Commands**: Send commands to clients to request video uploads for specific time ranges.
-- **Dual Implementation**: Available in both Node.js and Python (aiohttp).
-
-![AllSpark Edge Server Architecture](docs/architecture.png)
 
 ## Configuration
 
-Both servers read configuration from `config.json` in the project root (parent of the server directories). If the file is not found, defaults are used.
+Both servers read from `config.json` in the project root. Missing values are filled from defaults.
 
 > [!NOTE]
-> You can only run **one** server at a time if they are configured to use the same port (default: 8080).
+> You can only run **one** server at a time if they share the same port (default: 8080).
 
-**Default Configuration:**
-```json
-{
-  "hostname": "0.0.0.0",
-  "port": 8080,
-  "serviceName": "AllSpark Server",
-  "keyFile": "keys/test-private.key",
-  "certFile": "keys/test-public.crt",
-  "uploadPath": "uploads/",
-  "clientConfig": {
-    "videoFormat": "mp4",
-    "videoChunkDurationMs": 30000,
-    "videoBufferMaxMB": 16000
-  }
-}
-```
-
-### Configuration Options
-- **serviceName**: The name advertised via Bonjour (default: "AllSpark Server")
-- **clientConfig**: Settings pushed to clients upon connection
-  - **videoFormat**: Preferred video encoding ("mp4" or "mov")
-  - **videoChunkDurationMs**: Duration of recording chunks in milliseconds
-  - **videoBufferMaxMB**: Max storage usage on client before old files are deleted
+![AllSpark Edge Server Architecture](docs/architecture.png)
 
 ## SSL Certificates
 
-Generate a testing-only self-signed certificate to secure the websocket transport (you only need to do this once):
+Generate a self-signed certificate for WSS/HTTPS (one-time):
 
 ```bash
 mkdir -p keys
@@ -99,103 +69,43 @@ openssl req \
 
 ## Running the Servers
 
-### Node.js Server
-
-1. **Navigate to the node directory:**
-   ```bash
-   cd node
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Start the server:**
-   ```bash
-   node server.js
-   ```
-
 ### Python Server
 
-1. **Navigate to the python directory:**
-   ```bash
-   cd python
-   ```
+```bash
+cd python
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python server.py
+```
 
-2. **Set up a virtual environment (recommended):**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+### Node.js Server
 
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Start the server:**
-   ```bash
-   python server.py
-   ```
+```bash
+cd node
+npm install
+node server.js
+```
 
 ### Quick WebSocket Test
-Using [`websocat`](https://github.com/vi/websocat):
+
 ```bash
 websocat --insecure wss://localhost:8080
 ```
 
-## Endpoints
+## API Reference
 
-Detailed documentation for the REST API and WebSocket protocols can be found in [docs/endpoints.md](docs/endpoints.md).
+See [docs/endpoints.md](docs/endpoints.md) for the full REST API and WebSocket protocol.
 
-## Upload Directory
+## Web Interface
 
-Uploaded files are stored in the `uploads/` directory, which is created automatically if it doesn't exist.
-
-## Web Interface (index.html)
-
-The server provides a web-based control interface at `http://localhost:8080` for monitoring connections and sending remote commands.
+The control interface at `http://localhost:8080` shows active connections and provides time-range upload controls.
 
 ![AllSpark Edge Server Web Interface](docs/server-page.png)
 
-### Features
-
-1. **Active Connections List**
-   - Shows all connected clients with their display names
-   - Device names automatically sent by clients (customizable in Settings)
-   - Format: "CustomName (DeviceModel)" or just "DeviceModel"
-   - Connection ID shown in smaller text below the name
-   - Displays metadata status and received data status
-   - Real-time updates every 5 seconds
-
-2. **Request Upload Time Range**
-   - **Start Time / End Time**: Date and time pickers to define the range of video to request.
-   - **Quick Presets**: "Last 1 min", "Last 5 mins", "Last 1 hour", "Now".
-   - **Request Upload Button**: Sends the `uploadTimeRange` command to the client.
-   - **Persistence**: Remembers selected times per connection ID.
-
-### Example Workflow
-
-1. Navigate to `http://localhost:8080` in a web browser
-2. View connected iOS devices in the "Active Connections" section
-3. Select a time range (e.g., "Last 5 mins") using the preset buttons or date pickers
-4. Click "Request Upload Time Range"
-5. Client receives command and automatically:
-   - Checks local storage for recordings within that range
-   - Uploads any matching files to the server
-   - Files appear in `uploads/` directory on the server
-
 ## Troubleshooting
 
-**Connection not found:**
-- Verify the `connectionId` is correct via `/api/status`
-- Ensure the client connection is still active
-
-**File write errors:**
-- Check that the `uploads/` directory is writable
-- Verify disk space is available
-
-**Binary data before metadata:**
-- Ensure metadata JSON is sent first before any binary data
-- Server will reject binary data received before metadata with an error message
+| Problem | Fix |
+|---------|-----|
+| Connection not found | Verify `connectionId` via `GET /api/status`; ensure client is still connected |
+| File write errors | Check `uploads/` is writable and disk space is available |
+| Binary data before metadata | Always send metadata JSON before binary data |
