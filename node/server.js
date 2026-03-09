@@ -26,7 +26,18 @@ const defaultConfig = {
   clientConfig: {
     videoFormat: "mp4",
     videoChunkDurationMs: 30000,
-    videoBufferMaxMB: 16000
+    videoBufferMaxMB: 16000,
+    communicationsPolicy: {
+      wifi: true,
+      cellular: true,
+      ethernet: true,
+      usb: true,
+      bluetooth: false,
+      airdrop: false,
+      nfc: false,
+      uwb: false,
+      satellite: false
+    }
   }
 };
 

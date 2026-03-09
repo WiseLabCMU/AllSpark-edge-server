@@ -82,6 +82,7 @@ graph LR
 | REQ-ES-021 | SSL/TLS support via configurable key/cert files for WSS/HTTPS | [server.py#init_app](python/server.py), [server.js](node/server.js) |
 | REQ-ES-022 | Shared `config.json` with deep-merge of user overrides and defaults | [config.json](config.json), [server.py#load_config](python/server.py) |
 | REQ-ES-023 | Dual implementation parity: Python (aiohttp) and Node.js | [python/](python/), [node/](node/) |
+| REQ-ES-025 | `communicationsPolicy` in `clientConfig` specifying per-protocol enable/disable for mobile devices | [config.json](config.json) |
 
 ### Web Interface
 
@@ -118,3 +119,4 @@ sequenceDiagram
 - **QUIC transport** for high-bandwidth binary video/depth pulls
 - **Raspberry Pi** and **Nvidia Nano** edge clients
 - Secure transport (WSS/HTTPS) is easy to configure; clients try secure before insecure
+- UWB/NFC/Satellite enforcement in `communicationsPolicy` (pending public iOS API or cross-platform clients)

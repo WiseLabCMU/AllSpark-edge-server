@@ -21,7 +21,18 @@ DEFAULT_CONFIG = {
     "clientConfig": {
         "videoFormat": "mp4",
         "videoChunkDurationMs": 30000,
-        "videoBufferMaxMB": 16000
+        "videoBufferMaxMB": 16000,
+        "communicationsPolicy": {
+            "wifi": True,
+            "cellular": True,
+            "ethernet": True,
+            "usb": True,
+            "bluetooth": False,
+            "airdrop": False,
+            "nfc": False,
+            "uwb": False,
+            "satellite": False
+        }
     }
 }
 

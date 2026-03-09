@@ -102,6 +102,11 @@ The control interface at `http://localhost:8080` shows active connections and pr
 
 ![AllSpark Edge Server Web Interface](docs/server-page.png)
 
+## Known Limitations
+
+- Communications policy (`communicationsPolicy` in `clientConfig`) is advisory to iOS clients — the server sets desired state but cannot enforce radio changes on devices
+- UWB, NFC, and Satellite policy keys are defined but enforcement is deferred on iOS (no public API); may be enforceable on other platforms (e.g. Android)
+
 ## Troubleshooting
 
 | Problem | Fix |
