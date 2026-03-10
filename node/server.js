@@ -396,18 +396,41 @@ wss.on("connection", function connection(ws) {
         state.metadata = parsedMessage;
         state.receivedData = false;
 
+        // Extract timestamp from filename
+        let timestampSec = Date.now() / 1000;
+        try {
+          const nameWithoutExt = path.parse(parsedMessage.filename).name;
+          const parts = nameWithoutExt.split('_');
+          const parsedTs = parseFloat(parts[parts.length - 1]);
+          if (!isNaN(parsedTs)) {
+            timestampSec = parsedTs;
+          }
+        } catch (err) {
+          // fallback to current time
+        }
+
+        const dt = new Date(timestampSec * 1000);
+        const year = dt.getUTCFullYear().toString().padStart(4, '0');
+        const month = (dt.getUTCMonth() + 1).toString().padStart(2, '0');
+        const day = dt.getUTCDate().toString().padStart(2, '0');
+
+        const safeClientName = (state.clientName || "unknown").replace(/[^a-zA-Z0-9_-]/g, '_');
+
         // Resolve upload path relative to project root if it's relative
         const projectRoot = path.join(__dirname, "../");
         // Check if config.uploadPath is absolute or relative
-        const uploadDir = path.isAbsolute(config.uploadPath) ? config.uploadPath : path.join(projectRoot, config.uploadPath);
+        const baseUploadDir = path.isAbsolute(config.uploadPath) ? config.uploadPath : path.join(projectRoot, config.uploadPath);
+
+        const targetDir = path.join(baseUploadDir, "orgs", "default", "devices", safeClientName, year, month, day);
 
         // Create uploads directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
         }
 
         // Create write stream for the video file
-        const filepath = path.join(uploadDir, state.metadata.filename);
+        const filepath = path.join(targetDir, state.metadata.filename);
+        state.filepath = filepath; // Store for logging
         state.fileStream = fs.createWriteStream(filepath);
 
         state.fileStream.on("error", (err) => {
@@ -439,7 +462,7 @@ wss.on("connection", function connection(ws) {
 
             const projectRoot = path.join(__dirname, "../");
             const uploadDir = path.isAbsolute(config.uploadPath) ? config.uploadPath : path.join(projectRoot, config.uploadPath);
-            const filepath = path.join(uploadDir, currentMetadata.filename);
+            const filepath = state.filepath || path.join(uploadDir, currentMetadata.filename);
             // Store the last filename and filesize
             state.lastFilename = currentMetadata.filename;
             state.lastFilesize = currentMetadata.filesize || message.length;

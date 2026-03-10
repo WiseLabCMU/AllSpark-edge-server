@@ -211,11 +211,42 @@ async def websocket_handler(request):
                         state["metadata"] = data
                         state["receivedData"] = False
 
-                        # Prepare upload path
-                        upload_path = resolve_path(config["uploadPath"])
-                        os.makedirs(upload_path, exist_ok=True)
+                        # Extract timestamp from filename to align folder structure date
+                        filename = data["filename"]
+                        timestamp_sec = time.time()
+                        try:
+                            name_without_ext = os.path.splitext(filename)[0]
+                            parts = name_without_ext.split('_')
+                            parsed_ts = float(parts[-1])
+                            timestamp_sec = parsed_ts
+                        except Exception:
+                            pass
 
-                        filepath = os.path.join(upload_path, data["filename"])
+                        # Sanitize client name string
+                        import re
+                        client_name = state.get("clientName") or "unknown"
+                        safe_client_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', client_name)
+
+                        import datetime
+                        dt = datetime.datetime.fromtimestamp(timestamp_sec, tz=datetime.timezone.utc)
+                        year = f"{dt.year:04d}"
+                        month = f"{dt.month:02d}"
+                        day = f"{dt.day:02d}"
+
+                        # Prepare upload path
+                        base_upload_path = resolve_path(config["uploadPath"])
+                        target_dir = os.path.join(
+                            base_upload_path,
+                            "orgs", "default",
+                            "devices", safe_client_name,
+                            year,
+                            month,
+                            day
+                        )
+                        os.makedirs(target_dir, exist_ok=True)
+
+                        filepath = os.path.join(target_dir, filename)
+                        state["filepath"] = filepath # Store for logging later
                         try:
                             state["file_handle"] = open(filepath, "wb")
                         except Exception as e:
@@ -241,7 +272,7 @@ async def websocket_handler(request):
                     state["file_handle"].close()
 
                     filename = state["metadata"]["filename"]
-                    filepath = os.path.join(resolve_path(config["uploadPath"]), filename)
+                    filepath = state.get("filepath", os.path.join(resolve_path(config["uploadPath"]), filename))
                     filesize = len(msg.data)
 
                     state["lastFilename"] = filename
