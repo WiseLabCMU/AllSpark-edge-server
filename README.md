@@ -7,6 +7,8 @@ This server provides HTTP and WebSocket endpoints for AllSpark video capture, up
 
 For detailed architecture diagrams, feature requirements, and source file index, see **[REQUIREMENTS.md](REQUIREMENTS.md)**.
 
+See also: **[CHANGELOG.md](CHANGELOG.md)**
+
 ## Quick Start (Python)
 
 ```bash
