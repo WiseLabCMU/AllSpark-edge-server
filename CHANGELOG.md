@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.3.0...v0.3.0) (2026-03-10)
+
+
+### Features
+
+* **comms:** add communications policy to define which channels should be allowed ([c95f433](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c95f4332e9d40eefbc60bb4be0c5536f2fea1a50))
+
+
+### Bug Fixes
+
+* upload folders save as org/device/date structure ([c4b6434](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c4b6434a0c523cc8bc0f5fd1fbf4d23c432b7c54))
+
 ## [0.3.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.2.0...v0.3.0) (2026-02-20)
 
 
