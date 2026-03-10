@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.3.0...v0.3.0) (2026-03-10)
+## [0.4.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.3.0...v0.4.0) (2026-03-10)
 
 
 ### Features
