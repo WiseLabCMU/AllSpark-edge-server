@@ -47,6 +47,46 @@ To support low-latency signaling alongside high-volume data transport across an 
 *   **Purpose**: Resilient, multiplexed binary transfer. QUIC avoids head-of-line blocking for sending multiple concurrent video/depth/audio streams. gRPC provides strong typing for RPC coordination.
 *   **Legacy**: Standard HTTP chunked uploads for simple, large-file ingest.
 
+### Mobile Client Protocol Support Levels
+
+Both iOS and Android provide robust support for these communication protocols, with QUIC being the newest and still in the process of wider adoption. HTTP and WebSocket are well-established and fully supported on both platforms.
+
+#### QUIC Protocol Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Experimental | QUIC is supported through the Network framework, allowing developers to create network connections using QUIC. |
+| **Android** | Supported | QUIC is available via the Cronet library, which can be loaded through Google Play Services. |
+
+#### HTTP Protocol Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Full Support | HTTP/1.1 and HTTP/2 are fully supported, with HTTP/3 (which uses QUIC) being gradually adopted. |
+| **Android** | Full Support | HTTP/1.1 and HTTP/2 are fully supported, with HTTP/3 support available through libraries like Cronet. |
+
+#### WebSocket (WS) Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Full Support | WebSocket is fully supported, allowing real-time communication in apps. |
+| **Android** | Full Support | WebSocket is fully supported, enabling real-time data exchange in applications. |
+
+#### WebRTC Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Full Support | Natively supported via WebKit for web apps and available via Google's WebRTC library for native apps. |
+| **Android** | Full Support | Natively supported in WebView and fully supported via Google's WebRTC library for native implementations. |
+
+#### gRPC Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Full Support | Supported via the official gRPC Swift or Objective-C libraries, leveraging HTTP/2. |
+| **Android** | Full Support | Fully supported using gRPC-Java, enabling strong typing and efficient multiplexed RPC coordination. |
+
+#### MQTT Support
+| Platform | Support Level | Details |
+| :--- | :--- | :--- |
+| **iOS** | Full Support | Supported via robust third-party client libraries (e.g., CocoaMQTT) for low-latency pub/sub messaging. |
+| **Android** | Full Support | Supported via established client libraries like Eclipse Paho for lightweight IoT signaling. |
+
 ## 5. Deployment Strategy (Intranet Context)
 
 The server must operate reliably in zero-trust, air-gapped, or intranet worksite environments.
