@@ -38,24 +38,27 @@ The rule engine enables complex, event-driven orchestration across all three cli
 To support low-latency signaling alongside high-volume data transport across an intranet worksite, we are exploring well-supported, off-the-shelf open platforms to replace custom legacy patterns (e.g., pure WebSockets).
 
 ### Signaling (Low-Latency, 2-Way)
-*   **Target Platforms**: **NATS** or **MQTT**.
+*   **Target Platforms**: **MQTT** (Primary) or **NATS**.
+*   **Recommendation**: **MQTT** is the recommended choice for cross-platform signaling. It is purposefully designed for edge scenarios, gracefully handles spotty connections, and has robust, mature client libraries across iOS (CocoaMQTT) and Android (Eclipse Paho). This fits perfectly into the Industrial Error Loop orchestration.
 *   **Purpose**: Lightweight pub/sub for control planes, hardware error messaging, rule triggers, and maintaining live device registries.
 *   **Fallback**: WebSocket is maintained for simple browser-client integration.
 
 ### Data Transport (High-Volume, 2-Way)
-*   **Target Platforms**: **QUIC** (HTTP/3) or **gRPC**.
+*   **Target Platforms**: **QUIC** (HTTP/3) (Primary) or **gRPC**.
+*   **Recommendation**: **QUIC** (HTTP/3) is the recommended primary choice for high-volume, multiplexed data transfer. It natively avoids head-of-line blocking, making it exceptionally resilient on spotty edge networks when concurrently sending video, depth, and audio streams. **gRPC** remains a strong secondary option for strict RPC coordination where specific typed API contracts are preferred.
+    *   **Media Addendum**: For purely live video/audio streaming, **WebRTC** is the recommended standard as it natively handles packet loss, adaptive bitrates, and has full native cross-platform support.
 *   **Purpose**: Resilient, multiplexed binary transfer. QUIC avoids head-of-line blocking for sending multiple concurrent video/depth/audio streams. gRPC provides strong typing for RPC coordination.
 *   **Legacy**: Standard HTTP chunked uploads for simple, large-file ingest.
 
 ### Mobile Client Protocol Support Levels
 
-Both iOS and Android provide robust support for these communication protocols, with QUIC being the newest and still in the process of wider adoption. HTTP and WebSocket are well-established and fully supported on both platforms.
+Both iOS and Android provide robust support for these communication protocols. HTTP and WebSocket are well-established, while QUIC is fully supported on modern OS versions, offering unparalleled performance benefits.
 
 #### QUIC Protocol Support
 | Platform | Support Level | Details |
 | :--- | :--- | :--- |
-| **iOS** | Experimental | QUIC is supported through the Network framework, allowing developers to create network connections using QUIC. |
-| **Android** | Supported | QUIC is available via the Cronet library, which can be loaded through Google Play Services. |
+| **iOS** | Supported | QUIC (HTTP/3) is enabled by default in `URLSession` (iOS 15+). Custom raw QUIC streams can be built via `Network.framework` (iOS 15+). |
+| **Android** | Supported | QUIC is available via the Cronet library (Android API 29+ / Android 10+ recommended for best support). |
 
 #### HTTP Protocol Support
 | Platform | Support Level | Details |
