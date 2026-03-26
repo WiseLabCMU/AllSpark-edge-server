@@ -24,6 +24,7 @@ def menu(navtitle: str):
             ui.link('Capture', '/capture').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Agent', '/agent').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Rerun', '/rerun').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
+            ui.link('Settings', '/settings').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.label('👤 test-user').classes('ml-8 mr-2 text-sm text-gray-300')
 
     with ui.column().classes('w-full max-w-5xl mx-auto mt-6 p-4'):
