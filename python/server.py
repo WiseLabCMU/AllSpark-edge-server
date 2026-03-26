@@ -61,6 +61,12 @@ def load_config():
             print(f"Failed to load config: {e}")
     else:
         print("Using default config")
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(DEFAULT_CONFIG, f, indent=2)
+            print(f"Created config.json from internal defaults at {config_path}")
+        except Exception as e:
+            print(f"Failed to create default config.json: {e}")
 
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
