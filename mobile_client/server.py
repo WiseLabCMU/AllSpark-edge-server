@@ -87,10 +87,10 @@ def resolve_path(path_str):
     return os.path.join(get_project_root(), path_str)
 
 async def handle_index(request):
-    index_path = resolve_path("index.html")
+    index_path = os.path.join(os.path.dirname(__file__), "index.html")
     if os.path.exists(index_path):
         return web.FileResponse(index_path)
-    return web.Response(text="index.html not found", status=404)
+    return web.Response(text="AllSpark Mobile Client Edge Server - API Active", status=200)
 
 def get_local_ip():
     local_ip = "127.0.0.1"
