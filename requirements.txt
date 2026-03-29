@@ -1,0 +1,15 @@
+aiohttp==3.9.3
+zeroconf==0.131.0
+netifaces==0.11.0
+nicegui>=1.4.0
+rerun-sdk>=0.15.0
+paho-mqtt==1.6.1
+PyYAML>=6.0.1
+watchdog>=4.0.0
+requests>=2.31.0
+pandas>=2.0.0
+Pillow>=10.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+scipy>=1.10.0
+pytz>=2023.3

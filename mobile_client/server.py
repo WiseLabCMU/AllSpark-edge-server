@@ -1,4 +1,5 @@
 import json
+import yaml
 import logging
 import os
 import socket
@@ -9,7 +10,7 @@ from aiohttp import WSMsgType, web
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
 # Constants
-CONFIG_FILE = "../config.json"
+CONFIG_FILE = "../config.yaml"
 DEFAULT_CONFIG = {
     "hostname": "0.0.0.0",
     "port": 8080,
@@ -47,27 +48,36 @@ def load_config():
 
     # Load user config if exists
     config_path = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
+    
+    full_config = {}
+    needs_save = False
+    
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
-                user_config = json.load(f)
-                # Deep merge would be better, but simple update for now
-                config.update(user_config)
-                # Merge clientConfig specifically if present
-                if "clientConfig" in user_config:
-                    config["clientConfig"].update(user_config["clientConfig"])
-            print(f"Loaded config from {config_path}")
+                full_config = yaml.safe_load(f) or {}
         except Exception as e:
             print(f"Failed to load config: {e}")
+            
+    if "mobile_client" in full_config:
+        mc_config = full_config["mobile_client"]
+        config.update(mc_config)
+        if "clientConfig" in mc_config and isinstance(mc_config["clientConfig"], dict):
+            config["clientConfig"].update(mc_config["clientConfig"])
     else:
-        print("Using default config")
+        print("mobile_client section missing in config.yaml. Generating it...")
+        full_config["mobile_client"] = DEFAULT_CONFIG
+        needs_save = True
+        
+    if needs_save:
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(DEFAULT_CONFIG, f, indent=2)
-            print(f"Created config.json from internal defaults at {config_path}")
+                yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
+            print(f"Updated config.yaml with mobile_client section at {config_path}")
         except Exception as e:
-            print(f"Failed to create default config.json: {e}")
-
+            print(f"Failed to update config.yaml: {e}")
+            
+    print(f"Loaded config from {config_path}")
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -347,7 +357,7 @@ async def init_app():
     app.router.add_get('/api/status', handle_status)
     app.router.add_get('/api/config', handle_config)
     app.router.add_post('/api/command/{connection_id}', handle_command_post)
-    app.router.add_static('/third-party', path=os.path.join("..", "third-party"), name='third-party')
+    app.router.add_static('/third-party', path=resolve_path("third-party"), name='third-party')
 
     # Actually wait, client connects to wss://host:port/. So root is correct for WS?
     # But I also have handle_index on root.

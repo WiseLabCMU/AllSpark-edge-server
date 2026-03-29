@@ -1,5 +1,25 @@
 from nicegui import ui
 from theme import menu
+import subprocess
+import os
+import sys
+
+def launch_rerun():
+    ui.notify('Launching Rerun native viewer...', type='info')
+    
+    # Try to launch the GUI/app.py from datacapture dataset
+    gui_app = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..', 'allspark-datacapture', 'GUI', 'app.py'))
+    dummy_server = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dummy_rerun_server.py'))
+    
+    if os.path.exists(gui_app):
+        # We spawn the datacapture app
+        subprocess.Popen([sys.executable, gui_app, '--root_folder', '/tmp', '--lean'])
+    elif os.path.exists(dummy_server):
+        # Or spawn a dummy server that serves on 9090
+        subprocess.Popen([sys.executable, dummy_server])
+        
+    ui.navigate.to('/rerun')
+
 
 def create_page():
     @ui.page('/agent')
@@ -26,4 +46,4 @@ I have reviewed the logs between 14:00 and 14:05. The frame drop was caused by a
 
 I have generated a visualization of the synchronized data streams.
                         ''')
-                        ui.button('View in Rerun.io', icon='open_in_new', on_click=lambda: ui.navigate.to('/rerun')).classes('mt-2')
+                        ui.button('View in Rerun.io', icon='open_in_new', on_click=launch_rerun).classes('mt-2')
