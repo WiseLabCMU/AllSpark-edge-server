@@ -14,19 +14,21 @@ def get_local_ip():
     return ip
 
 @contextlib.contextmanager
-def menu(navtitle: str):
+def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
     """A context manager for the page layout and navigation menu."""
     with ui.header().classes('justify-between items-center bg-blue-grey-9'):
-        ui.label('AllSpark').classes('text-lg font-bold')
+        ui.label('AllSpark Edge Server').classes('text-lg font-bold')
         with ui.row().classes('items-center'):
-            ui.link('Dashboard', '/').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
+            ui.link('Anomalies', '/anomalies').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Clients', '/clients').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Capture', '/capture').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
+            ui.link('Logs', '/logs').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Agent', '/agent').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Rerun', '/rerun').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Settings', '/settings').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.label('👤 test-user').classes('ml-8 mr-2 text-sm text-gray-300')
 
-    with ui.column().classes('w-full max-w-5xl mx-auto mt-6 p-4'):
-        ui.label(navtitle).classes('text-2xl font-bold mb-4 text-gray-800')
+    container_classes = 'w-full mx-auto p-4' + ('' if full_width else ' max-w-5xl mt-6')
+    with ui.column().classes(container_classes):
+        if not hide_title:
+            ui.label(navtitle).classes('text-2xl font-bold mb-4 text-gray-800')
         yield

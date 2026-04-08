@@ -48,17 +48,17 @@ def load_config():
 
     # Load user config if exists
     config_path = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
-    
+
     full_config = {}
     needs_save = False
-    
+
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 full_config = yaml.safe_load(f) or {}
         except Exception as e:
             print(f"Failed to load config: {e}")
-            
+
     if "mobile_client" in full_config:
         mc_config = full_config["mobile_client"]
         config.update(mc_config)
@@ -68,7 +68,7 @@ def load_config():
         print("mobile_client section missing in config.yaml. Generating it...")
         full_config["mobile_client"] = DEFAULT_CONFIG
         needs_save = True
-        
+
     if needs_save:
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
@@ -76,7 +76,7 @@ def load_config():
             print(f"Updated config.yaml with mobile_client section at {config_path}")
         except Exception as e:
             print(f"Failed to update config.yaml: {e}")
-            
+
     print(f"Loaded config from {config_path}")
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -219,6 +219,17 @@ async def websocket_handler(request):
                                         pass
                         await ws.send_json({"status": "success", "message": "Chunk saved info received"})
 
+                        # Auto-upload feature
+                        if config.get("autoUpload", False):
+                            start_time = data.get("startTime", 0)
+                            end_time = data.get("endTime", time.time())
+                            print(f"AutoUpload enabled. Automatically requesting upload from {connection_id} for range {start_time}-{end_time}")
+                            await ws.send_json({
+                                "command": "uploadTimeRange",
+                                "startTime": start_time,
+                                "endTime": end_time
+                            })
+
                     elif data.get("type") == "upload":
                         if "filename" not in data:
                              await ws.send_json({"status": "error", "message": "Invalid upload metadata"})
@@ -293,6 +304,8 @@ async def websocket_handler(request):
 
                     state["lastFilename"] = filename
                     state["lastFilesize"] = filesize
+
+                    # Notify agents of new file if needed
                     state["file_handle"] = None
                     state["metadata"] = None
 

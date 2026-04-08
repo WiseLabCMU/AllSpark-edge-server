@@ -76,6 +76,9 @@ def create_page():
                     ui.number('Port').bind_value(config, 'port').classes('w-full')
                     ui.input('Upload Path (Videos/Logs)').bind_value(config, 'uploadPath').classes('w-full')
                     ui.number('Keep Alive Interval (ms)').bind_value(config, 'keepAliveIntervalMs').classes('w-full')
+                    with ui.row().classes('gap-4 mt-2'):
+                        ui.checkbox('Auto Upload Media').bind_value(config, 'autoUpload')
+                        ui.checkbox('Enable QUIC Server').bind_value(config, 'enableQuic')
 
                 # Security & Paths
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):

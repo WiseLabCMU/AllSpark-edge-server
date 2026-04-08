@@ -3,6 +3,7 @@ from theme import menu
 import subprocess
 import os
 import sys
+from pages.anomalies import fetch_files, get_anomaly_path
 
 def launch_rerun():
     ui.notify('Launching Rerun native viewer...', type='info')
@@ -29,7 +30,11 @@ def create_page():
             with ui.row().classes('w-full gap-6'):
                 with ui.column().classes('w-1/3'):
                     ui.label('Investigate Issue').classes('text-xl font-bold mb-4')
-                    ui.select(['Latency > 500ms (Camera Rig A)', 'Connection Dropped (Mobile Client B)'], label='Target Anomaly').classes('w-full mb-4')
+                    
+                    anomaly_files = fetch_files(get_anomaly_path())
+                    options = [f"{f['name']} ({f['mtime_str']})" for f in anomaly_files] if anomaly_files else ['No anomalies found']
+                    
+                    ui.select(options, label='Target Anomaly', value=options[0] if options else None).classes('w-full mb-4')
                     ui.textarea(label='Context / Prompt', value='Analyze the provided QUIC videos and MQTT logs to determine why the latency spiked over 500ms on Rig A.').classes('w-full h-32 mb-4')
                     ui.button('Execute Investigation', icon='science', on_click=lambda: ui.notify('Agent investigation dispatched! Context sent to agentic frameworks.')).classes('w-full bg-blue-600')
 
