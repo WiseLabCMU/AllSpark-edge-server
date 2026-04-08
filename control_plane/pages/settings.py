@@ -10,7 +10,7 @@ DEFAULT_CP_CONFIG = {
     "port": 8081,
     "logPaths": {
         "anomalyLogs": "logs/anomalies/",
-        "rigLogs": "logs/rigs/"
+        "rigLogs": "logs/data/datacapture-rig"
     }
 }
 

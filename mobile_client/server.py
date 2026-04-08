@@ -17,7 +17,7 @@ DEFAULT_CONFIG = {
     "serviceName": "AllSpark Server",
     "keyFile": "keys/test-private.key",
     "certFile": "keys/test-public.crt",
-    "uploadPath": "uploads/",
+    "uploadPath": "logs/data/mobile-client",
     "keepAliveIntervalMs": 5000,
     "clientConfig": {
         "videoFormat": "mp4",

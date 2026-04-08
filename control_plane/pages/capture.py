@@ -8,7 +8,7 @@ def create_page():
     @ui.page('/capture')
     def capture_page():
         config = load_config()
-        upload_path = config.get('uploadPath', 'uploads/orgs/default')
+        upload_path = config.get('uploadPath', 'logs/data/mobile-client/orgs/default')
         abs_upload_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', upload_path))
         
         with menu('Data Capture'):
