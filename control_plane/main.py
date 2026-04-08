@@ -17,15 +17,16 @@ if __name__ in {"__main__", "__mp_main__"}:
     full_config = settings.load_config()
     cp_config = full_config.get('control_plane', {})
     mc_config = full_config.get('mobile_client', {})
-    
+
     edge_port = mc_config.get('port', 8080)
     sidecar_port = cp_config.get('port', edge_port + 1)
-    
+
     # Mount the dynamic video storage directory for browser playback
-    upload_path = mc_config.get('uploadPath', 'logs/data/mobile-client/orgs/default')
+    upload_path = mc_config.get('uploadPath', 'logs/data/mobile-client')
     abs_upload_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', upload_path))
     os.makedirs(abs_upload_path, exist_ok=True)
     app.add_media_files('/videos', abs_upload_path)
 
     # Run the control plane
-    ui.run(title='AllSpark Control Plane', port=sidecar_port, storage_secret='allspark-secret')
+    storage_secret = cp_config.get('storageSecret', 'allspark-secret')
+    ui.run(title='AllSpark Control Plane', port=sidecar_port, storage_secret=storage_secret)

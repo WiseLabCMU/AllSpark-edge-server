@@ -8,6 +8,9 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'config.yaml')
 
 DEFAULT_CP_CONFIG = {
     "port": 8081,
+    "storageSecret": "allspark-secret",
+    "rerunHost": "127.0.0.1",
+    "rerunPort": 9090,
     "logPaths": {
         "anomalyLogs": "logs/anomalies/",
         "rigLogs": "logs/data/datacapture-rig"
@@ -86,6 +89,9 @@ def create_page():
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
                     ui.label('Control Plane Configuration').classes('text-lg font-bold mb-2')
                     ui.number('Port').bind_value(cp_config, 'port').classes('w-full')
+                    ui.input('Storage Secret').bind_value(cp_config, 'storageSecret').props('type=password').classes('w-full')
+                    ui.input('Rerun Host').bind_value(cp_config, 'rerunHost').classes('w-full')
+                    ui.number('Rerun Port').bind_value(cp_config, 'rerunPort').classes('w-full')
                     ui.input('Anomaly Logs Path').bind_value(cp_config['logPaths'], 'anomalyLogs').classes('w-full')
                     ui.input('Rig Logs Path').bind_value(cp_config['logPaths'], 'rigLogs').classes('w-full')
 
