@@ -80,6 +80,8 @@ def create_page():
                 filter_video = ui.checkbox('Video', value=True)
                 filter_image = ui.checkbox('Image', value=True)
                 filter_text = ui.checkbox('Text', value=True)
+                filter_audio = ui.checkbox('Audio', value=True)
+                filter_depth = ui.checkbox('Depth', value=True)
                 filter_hidden = ui.checkbox('Hide Hidden (.*)', value=True).classes('ml-4')
             
             columns = [
@@ -124,6 +126,13 @@ def create_page():
                                 safe_name = os.path.basename(p.strip('/')) or 'logs'
                                 ui.image(f'/log_media_{safe_name}/{rel_to_media}').classes('w-full bg-black').style('max-height: 75vh; object-fit: contain;')
                                 break
+                    elif ext in ['.wav', '.mp3', '.m4a', '.aac', '.flac']:
+                        for p in paths:
+                            if abs_path.startswith(p):
+                                rel_to_media = os.path.relpath(abs_path, p)
+                                safe_name = os.path.basename(p.strip('/')) or 'logs'
+                                ui.audio(f'/log_media_{safe_name}/{rel_to_media}').classes('w-full mt-4')
+                                break
                     elif ext in ['.json', '.txt', '.yaml', '.csv', '.log']:
                         try:
                             with open(abs_path, 'r') as f:
@@ -159,6 +168,8 @@ def create_page():
                 if filter_video.value: valid_exts.update(['.mp4', '.mkv', '.avi', '.webm', '.ts', '.mov', '.quic'])
                 if filter_image.value: valid_exts.update(['.jpg', '.jpeg', '.png', '.gif', '.svg'])
                 if filter_text.value: valid_exts.update(['.txt', '.json', '.yaml', '.csv', '.log', '.md'])
+                if filter_audio.value: valid_exts.update(['.wav', '.mp3', '.m4a', '.aac', '.flac'])
+                if filter_depth.value: valid_exts.update(['.oni', '.bag', '.bin', '.depth', '.ply', '.pcd'])
                 
                 filtered_files = []
                 for f in sorted_files:
@@ -173,7 +184,7 @@ def create_page():
                     # Ext filter
                     if valid_exts and f['ext'] not in valid_exts and f['ext'] != 'unknown':
                         # Allow unknown to sneak through? Let's just strict filter if ANY checkbox is checked
-                        if filter_video.value or filter_image.value or filter_text.value:
+                        if filter_video.value or filter_image.value or filter_text.value or filter_audio.value or filter_depth.value:
                             continue
                             
                     # Text filter
@@ -191,6 +202,8 @@ def create_page():
             filter_video.on_value_change(lambda _: update_ui(force=True))
             filter_image.on_value_change(lambda _: update_ui(force=True))
             filter_text.on_value_change(lambda _: update_ui(force=True))
+            filter_audio.on_value_change(lambda _: update_ui(force=True))
+            filter_depth.on_value_change(lambda _: update_ui(force=True))
             filter_hidden.on_value_change(lambda _: update_ui(force=True))
             filter_rig.on_value_change(lambda _: update_ui(force=True))
             filter_mobile.on_value_change(lambda _: update_ui(force=True))

@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "keepAliveIntervalMs": 5000,
     "clientConfig": {
         "videoFormat": "mp4",
-        "videoChunkDurationMs": 30000,
+        "videoChunkDurationMs": 10000,
         "videoBufferMaxMB": 16000,
         "communicationsPolicy": {
             "wifi": True,
@@ -256,19 +256,23 @@ async def websocket_handler(request):
 
                         import datetime
                         dt = datetime.datetime.fromtimestamp(timestamp_sec, tz=datetime.timezone.utc)
-                        year = f"{dt.year:04d}"
-                        month = f"{dt.month:02d}"
-                        day = f"{dt.day:02d}"
+                        date_str = dt.strftime("%Y-%m-%d")
+
+                        ext = os.path.splitext(filename)[1].lower()
+                        if ext in ['.mp4', '.mov', '.mkv', '.avi', '.webm', '.ts']:
+                            media_type = "video"
+                        elif ext in ['.jpg', '.jpeg', '.png', '.gif']:
+                            media_type = "image"
+                        else:
+                            media_type = "data"
 
                         # Prepare upload path
                         base_upload_path = resolve_path(config["uploadPath"])
                         target_dir = os.path.join(
                             base_upload_path,
-                            "orgs", "default",
-                            "devices", safe_client_name,
-                            year,
-                            month,
-                            day
+                            date_str,
+                            media_type,
+                            safe_client_name
                         )
                         os.makedirs(target_dir, exist_ok=True)
 
