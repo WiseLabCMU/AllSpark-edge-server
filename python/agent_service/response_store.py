@@ -4,13 +4,14 @@ AnomalyResponseStore
 Persists AgentResponse objects to disk under a structured directory layout:
 
     <base_path>/
-        <device_name>/
-            <YYYY-MM-DD>/
-                <HHMMSS_<uuid>>/
-                    response.json      – full AgentResponse as JSON
-                    summary.txt        – extracted text summary (human-readable)
-                    request.json       – original AnomalyRequest as JSON
-                    session_info.txt   – human-readable ADK session lookup info
+        <Anomaly_YYYY-MM-DD>/
+            <HHMMSS_<uuid>>/
+                response.json          – full AgentResponse as JSON
+                summary.txt            – extracted text summary (human-readable)
+                request.json           – original AnomalyRequest as JSON
+                session_info.txt       – human-readable ADK session lookup info
+                video_clips/           – video clip(s) associated with the anomaly
+                machine_anomaly_data/  – machine/sensor anomaly data files
 
 The module also provides helper methods to list and retrieve stored responses,
 making it straightforward to display them in the NiceGUI dashboard.
@@ -47,6 +48,8 @@ class AnomalyResponseStore:
     _SUMMARY_FILE = "summary.txt"
     _REQUEST_FILE = "request.json"
     _SESSION_INFO_FILE = "session_info.txt"
+    _VIDEO_CLIPS_DIR = "video_clips"
+    _MACHINE_ANOMALY_DATA_DIR = "machine_anomaly_data"
 
     def __init__(self, base_path: str) -> None:
         self._base = Path(base_path)
@@ -61,7 +64,6 @@ class AnomalyResponseStore:
         self,
         response: AgentResponse,
         request: Optional[AnomalyRequest] = None,
-        device_name: str = "default",
         agent_config: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
@@ -71,7 +73,6 @@ class AnomalyResponseStore:
         Args:
             response:     The AgentResponse to persist.
             request:      The originating AnomalyRequest (optional).
-            device_name:  Organises responses by device under the base path.
             agent_config: The agentConfig dict from config.json, used to
                           populate session_info.txt with real URLs/names.
                           Falls back to sensible defaults if None.
@@ -83,9 +84,13 @@ class AnomalyResponseStore:
         unique_id = response.request_id.split("_")[-1] if response.request_id else "x"
         subfolder_name = f"{time_str}_{unique_id}"
 
-        safe_device = _sanitise(device_name)
-        target_dir = self._base / safe_device / date_str / subfolder_name
+        date_folder = f"Anomaly_{date_str}"
+        target_dir = self._base / date_folder / subfolder_name
         target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create standard subdirectories for media/data artefacts
+        (target_dir / self._VIDEO_CLIPS_DIR).mkdir(exist_ok=True)
+        (target_dir / self._MACHINE_ANOMALY_DATA_DIR).mkdir(exist_ok=True)
 
         # Stamp the stored_at field before writing
         response.stored_at = str(target_dir)
@@ -157,26 +162,22 @@ class AnomalyResponseStore:
 
     def list_responses(
         self,
-        device_name: Optional[str] = None,
         limit: int = 50,
     ) -> List[AgentResponse]:
         """
         Return up to *limit* AgentResponse objects, newest first.
 
         Args:
-            device_name: If given, restrict to that device; otherwise all devices.
             limit: Maximum number of results to return.
         """
         results: List[AgentResponse] = []
 
-        search_root = self._base / _sanitise(device_name) if device_name else self._base
-
-        if not search_root.exists():
+        if not self._base.exists():
             return results
 
         # Walk the folder structure collecting response.json files
         response_files = sorted(
-            search_root.rglob(self._RESPONSE_FILE), reverse=True
+            self._base.rglob(self._RESPONSE_FILE), reverse=True
         )
 
         for rf in response_files[:limit]:
@@ -237,11 +238,6 @@ class AnomalyResponseStore:
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
-
-def _sanitise(name: Optional[str]) -> str:
-    if not name:
-        return "default"
-    return re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
 
 
 def _parse_ts_for_folder(ts_str: str) -> datetime:

@@ -2,7 +2,7 @@ from nicegui import app, ui
 import os
 
 # Import all pages to register their routes
-from pages import dashboard, clients, capture, agent, rerun_view, settings
+from pages import dashboard, clients, capture, agent, rerun_view, settings, debug
 
 # Initialize pages
 dashboard.create_page()
@@ -11,6 +11,7 @@ capture.create_page()
 agent.create_page()
 rerun_view.create_page()
 settings.create_page()
+debug.create_page()
 
 if __name__ in {"__main__", "__mp_main__"}:
     # Read port from config.json and start NiceGUI on config['port'] + 1 (default 8081).

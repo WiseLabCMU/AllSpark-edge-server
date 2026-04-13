@@ -1,15 +1,30 @@
 """
 Agent Page – AllSpark Control Plane
+=====================================
 
-Provides:
-1. A form to trigger an on-demand anomaly analysis via the Edge Server
-   POST /api/agent/analyze endpoint.
-2. A live-updating response feed that polls GET /api/agent/responses and
-   renders each result with its summary, metadata, and status badge.
+Full-width response feed showing all stored agent analyses.
+
+Each response card shows: status badge, clip name, anomaly time, session ID,
+expandable agent summary, and a "Continue Investigation" button that navigates
+to the embedded ADK session viewer (/agent/session) – an iframe page that
+embeds the ADK dev-ui directly at the correct session URL (including app,
+user ID, and session ID).
+
+New-anomaly workflow
+--------------------
+Use the Debug page (/debug, linked in the header nav) to submit a new anomaly
+analysis via POST /api/agent/analyze.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import Any, Dict, List
+from urllib.parse import quote
 
 import aiohttp
 from nicegui import ui
@@ -22,8 +37,38 @@ from pages.settings import load_config
 # Constants
 # ---------------------------------------------------------------------------
 
-_DEFAULT_DEVICE = "default"
 _POLL_INTERVAL_SEC = 10.0
+
+
+# ---------------------------------------------------------------------------
+# Value objects
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AnomalyOption:
+    """Carries ADK session context for one stored response."""
+    session_id: str
+    user_id: str
+    app_name: str
+    adk_base_url: str
+
+    @property
+    def has_session(self) -> bool:
+        return bool(self.session_id)
+
+    def session_viewer_url(self) -> str:
+        """
+        Build the /agent/session URL that the embedded iframe page will use.
+        Encodes the full ADK dev-ui address as a query parameter so the
+        viewer page can construct the iframe src dynamically.
+        """
+        adk_url = (
+            f"{self.adk_base_url}/dev-ui/"
+            f"?app={self.app_name}"
+            f"&user={self.user_id}"
+            f"&session={self.session_id}"
+        )
+        return f"/agent/session?adk_url={quote(adk_url, safe='')}"
 
 
 # ---------------------------------------------------------------------------
@@ -34,159 +79,224 @@ def _status_badge_color(status: str) -> str:
     return "green" if status == "success" else "red"
 
 
+def _launch_rerun() -> None:
+    ui.notify("Launching Rerun native viewer…", type="info")
+    gui_app = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "..", "..", "..",
+            "allspark-datacapture", "GUI", "app.py",
+        )
+    )
+    dummy_server = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "dummy_rerun_server.py")
+    )
+    if os.path.exists(gui_app):
+        subprocess.Popen([sys.executable, gui_app, "--root_folder", "/tmp", "--lean"])
+    elif os.path.exists(dummy_server):
+        subprocess.Popen([sys.executable, dummy_server])
+    ui.navigate.to("/rerun")
+
+
 # ---------------------------------------------------------------------------
-# Page definition
+# Embedded ADK session viewer page  (/agent/session?adk_url=...)
+# ---------------------------------------------------------------------------
+
+def _create_session_viewer() -> None:
+    """
+    Registers a full-screen iframe page at /agent/session.
+
+    The ADK dev-ui URL is passed as the `adk_url` query parameter so the
+    iframe src is set dynamically per session without any server-side state.
+    """
+    @ui.page("/agent/session")
+    async def session_viewer(adk_url: str = "") -> None:
+        # Decode is handled automatically by NiceGUI's query param binding.
+        # Fall back to the bare ADK UI root if no URL is provided.
+        if not adk_url:
+            adk_url = "http://localhost:8000/dev-ui/"
+
+        with menu("Agent Session – ADK Developer UI"):
+            with ui.row().classes("w-full justify-between items-center mb-4"):
+                ui.label("AllSpark Agent Session").classes(
+                    "text-xl font-bold text-gray-800"
+                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        "Open in New Window",
+                        icon="open_in_browser",
+                        on_click=lambda: ui.run_javascript(
+                            f"window.open({json.dumps(adk_url)}, '_blank')"
+                        ),
+                    ).props("flat")
+                    ui.button(
+                        "← Back to Responses",
+                        icon="arrow_back",
+                        on_click=lambda: ui.navigate.to("/agent"),
+                    ).props("flat")
+
+            ui.label(adk_url).classes(
+                "text-xs font-mono text-gray-400 mb-2 truncate w-full"
+            ).tooltip(adk_url)
+
+            # Iframe embedding the ADK dev-ui at the specific session
+            ui.html(
+                f'<iframe src="{adk_url}" '
+                f'class="w-full" '
+                f'style="height: 75vh; border: 1px solid #ccc; border-radius: 8px;" '
+                f'allow="clipboard-read; clipboard-write">'
+                f"Your browser does not support iframes, or the ADK server is offline."
+                f"</iframe>"
+            ).classes("w-full")
+
+
+# ---------------------------------------------------------------------------
+# Main agent page  (/agent)
 # ---------------------------------------------------------------------------
 
 def create_page() -> None:
 
-    @ui.page('/agent')
-    async def agent_page():
+    # Register the embedded session viewer sub-page first
+    _create_session_viewer()
+
+    @ui.page("/agent")
+    async def agent_page() -> None:
         config = load_config()
-        edge_port = config.get('port', 8080)
+        edge_port = config.get("port", 8080)
         base_url = f"http://127.0.0.1:{edge_port}"
 
-        with menu('Agentic Analysis'):
+        # Derive ADK coordinates from config
+        agent_cfg: Dict[str, Any] = config.get("agentConfig", {})
+        raw_agent_url: str = agent_cfg.get("agent_url", "http://localhost:8000/run")
+        adk_base_url: str = re.sub(r"/run$", "", raw_agent_url.rstrip("/"))
+        adk_app_name: str = agent_cfg.get("agent_app_name", "allspark_agent")
+        adk_user_id: str = agent_cfg.get("agent_user_id", "edge_server_user")
 
-            # ----------------------------------------------------------------
-            # Section 1: On-demand analysis form
-            # ----------------------------------------------------------------
-            with ui.card().classes('w-full mb-6 p-4'):
-                ui.label('Trigger Anomaly Analysis').classes('text-xl font-bold mb-4')
+        with menu("Agentic Framework Control"):
 
-                with ui.row().classes('w-full gap-4 flex-wrap'):
-                    clip_path_input = ui.input(
-                        'Anomaly Clip Path',
-                        placeholder='/path/to/anomaly_clip_20260413_120000.mp4',
-                    ).classes('flex-1 min-w-[300px]')
+            with ui.row().classes("w-full justify-between items-center mb-4"):
+                ui.label("Recent Responses").classes("text-xl font-bold")
+                refresh_btn = ui.button("Refresh", icon="refresh").props(
+                    "flat dense"
+                ).classes("text-blue-600")
 
-                    log_path_input = ui.input(
-                        'Log Path (optional)',
-                        placeholder='/path/to/mqtt_trace.log',
-                    ).classes('flex-1 min-w-[300px]')
+            responses_container = ui.column().classes("w-full gap-4")
 
-                with ui.row().classes('w-full gap-4 flex-wrap'):
-                    anomaly_time_input = ui.input(
-                        'Anomaly Time (ISO-8601)',
-                        placeholder='2026-04-13T12:00:00',
-                    ).classes('flex-1 min-w-[200px]')
+            # ── Response rendering ────────────────────────────────────────────
 
-                    clip_start_input = ui.input(
-                        'Clip Start Time (ISO-8601, optional)',
-                        placeholder='2026-04-13T11:59:30',
-                    ).classes('flex-1 min-w-[200px]')
-
-                    device_name_input = ui.input(
-                        'Device Name',
-                        value=_DEFAULT_DEVICE,
-                    ).classes('flex-1 min-w-[160px]')
-
-                with ui.row().classes('w-full gap-4 flex-wrap'):
-                    error_input = ui.input(
-                        'Error / Label',
-                        value='missed expected message',
-                    ).classes('flex-1 min-w-[200px]')
-
-                    expected_topic_input = ui.input(
-                        'Expected MQTT Topic',
-                        placeholder='allspark/anomaly_detected',
-                    ).classes('flex-1 min-w-[200px]')
-
-                video_storage_input = ui.input(
-                    'Video Storage Path (optional)',
-                    placeholder='/path/to/video/chunks/',
-                ).classes('w-full')
-
-                submit_btn = ui.button(
-                    'Dispatch to Agentic Framework',
-                    icon='science',
-                ).classes('mt-4 bg-blue-600 text-white')
-
-                status_label = ui.label('').classes('mt-2 text-sm text-gray-600')
-
-                async def on_submit():
-                    submit_btn.disable()
-                    status_label.set_text('Sending request to agent framework…')
-
-                    payload: Dict[str, Any] = {
-                        "clip_path": clip_path_input.value.strip(),
-                        "log_path": log_path_input.value.strip(),
-                        "anomaly_time": anomaly_time_input.value.strip(),
-                        "clip_start_time": clip_start_input.value.strip(),
-                        "error": error_input.value.strip(),
-                        "expected_topic": expected_topic_input.value.strip(),
-                        "video_storage_path": video_storage_input.value.strip(),
-                        "device_name": device_name_input.value.strip() or _DEFAULT_DEVICE,
-                    }
-
-                    if not payload["clip_path"] or not payload["anomaly_time"]:
-                        ui.notify(
-                            'clip_path and anomaly_time are required.',
-                            type='warning',
-                        )
-                        status_label.set_text('')
-                        submit_btn.enable()
+            def _render_responses(responses: List[Dict[str, Any]]) -> None:
+                responses_container.clear()
+                with responses_container:
+                    if not responses:
+                        with ui.card().classes("w-full p-6 text-center bg-gray-50"):
+                            ui.icon("search_off", size="3rem").classes("text-gray-300 mb-2")
+                            ui.label("No agent responses yet.").classes(
+                                "text-gray-500 font-semibold"
+                            )
+                            ui.label(
+                                "Submit a new anomaly via the Debug page to start an investigation."
+                            ).classes("text-gray-400 text-sm mt-1")
+                            ui.html(
+                                '<a href="/debug" class="text-indigo-500 text-sm mt-2 inline-block hover:underline">'
+                                "→ Go to Debug page"
+                                "</a>"
+                            )
                         return
+                    for r in responses:
+                        _render_response_card(r)
 
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                f'{base_url}/api/agent/analyze',
-                                json=payload,
-                                timeout=aiohttp.ClientTimeout(total=360),
-                            ) as resp:
-                                result = await resp.json(content_type=None)
+            def _render_response_card(r: Dict[str, Any]) -> None:
+                status = r.get("status", "unknown")
+                color = _status_badge_color(status)
+                anomaly_time = r.get("anomaly_time", "N/A")
+                clip_path = r.get("clip_path", "N/A")
+                clip_basename = os.path.basename(clip_path) if clip_path else "N/A"
+                session_id: str = r.get("session_id", "")
+                summary = r.get("summary", "")
+                created_at = r.get("created_at", "")
+                stored_at = r.get("stored_at", "")
+                error_msg = r.get("error_message", "")
 
-                        if result.get('success'):
-                            ui.notify(
-                                f"Analysis complete. Request ID: {result.get('request_id', 'N/A')}",
-                                type='positive',
+                opt = AnomalyOption(
+                    session_id=session_id,
+                    user_id=adk_user_id,
+                    app_name=adk_app_name,
+                    adk_base_url=adk_base_url,
+                )
+
+                with ui.card().classes("w-full shadow-sm bg-white border border-gray-100"):
+
+                    # ── Card header ───────────────────────────────────────────
+                    with ui.row().classes("w-full justify-between items-start"):
+                        with ui.column().classes("gap-1 flex-1 min-w-0"):
+                            with ui.row().classes("items-center gap-2 flex-wrap"):
+                                ui.badge(status.upper(), color=color).classes("text-xs")
+                                ui.label(clip_basename).classes(
+                                    "font-bold text-gray-800 truncate"
+                                )
+                            ui.label(f"Anomaly Time: {anomaly_time}").classes(
+                                "text-sm text-gray-600"
                             )
-                            status_label.set_text(
-                                f"✅ Stored at: {result.get('stored_at', '')}"
+                            ui.label(f"Clip: {clip_path}").classes(
+                                "text-xs text-gray-400 font-mono truncate"
+                            ).tooltip(clip_path)
+                            if session_id:
+                                ui.label(f"Session: {session_id}").classes(
+                                    "text-xs text-gray-300 font-mono truncate"
+                                ).tooltip(session_id)
+                        ui.label(created_at[:19] if created_at else "").classes(
+                            "text-xs text-gray-400 whitespace-nowrap ml-2 mt-1"
+                        )
+
+                    ui.separator().classes("my-2")
+
+                    # ── Card body ─────────────────────────────────────────────
+                    if status == "success" and summary:
+                        with ui.expansion(
+                            "Agent Summary", icon="psychology", value=True
+                        ).classes("w-full"):
+                            ui.markdown(summary).classes("text-sm")
+                    elif status == "error":
+                        with ui.row().classes("items-start gap-2"):
+                            ui.icon("error_outline", size="sm").classes("text-red-400 mt-0.5")
+                            ui.label(error_msg or "Unknown error").classes(
+                                "text-red-600 text-sm"
                             )
-                            await _refresh_responses()
-                        else:
-                            err = result.get('error_message') or result.get('error', 'Unknown error')
-                            ui.notify(f'Analysis failed: {err}', type='negative')
-                            status_label.set_text(f'❌ Error: {err}')
+                    else:
+                        ui.label("No summary available.").classes(
+                            "text-gray-400 text-sm italic"
+                        )
 
-                    except Exception as exc:
-                        ui.notify(f'Request failed: {exc}', type='negative')
-                        status_label.set_text(f'❌ {exc}')
-                    finally:
-                        submit_btn.enable()
+                    # ── Card footer ───────────────────────────────────────────
+                    with ui.row().classes("items-center gap-2 mt-3 flex-wrap"):
+                        if opt.has_session:
+                            viewer_url = opt.session_viewer_url()
+                            ui.button(
+                                "Continue Investigation",
+                                icon="psychology_alt",
+                                on_click=lambda v=viewer_url: ui.navigate.to(v),
+                            ).classes("bg-indigo-600 text-white text-sm")
 
-                submit_btn.on_click(on_submit)
+                        if status == "success":
+                            ui.button(
+                                "View in Rerun.io",
+                                icon="bar_chart",
+                                on_click=_launch_rerun,
+                            ).props("flat").classes("text-gray-500 text-sm")
 
-            # ----------------------------------------------------------------
-            # Section 2: Stored responses feed
-            # ----------------------------------------------------------------
-            with ui.row().classes('w-full justify-between items-center mb-2'):
-                ui.label('Agent Analysis Responses').classes('text-xl font-bold')
-                refresh_btn = ui.button(
-                    'Refresh', icon='refresh'
-                ).props('flat dense').classes('text-blue-600')
+                    if stored_at:
+                        ui.label(f"📁 {stored_at}").classes(
+                            "text-xs text-gray-300 font-mono mt-2 truncate"
+                        ).tooltip(stored_at)
 
-            device_filter = ui.input(
-                'Filter by Device Name (leave blank for all)',
-                placeholder=_DEFAULT_DEVICE,
-            ).classes('w-64 mb-4')
+            # ── Data fetching ─────────────────────────────────────────────────
 
-            responses_container = ui.column().classes('w-full gap-4')
-
-            async def _refresh_responses():
-                device: Optional[str] = device_filter.value.strip() or None
-                url = f'{base_url}/api/agent/responses'
-                params: Dict[str, str] = {'limit': '30'}
-                if device:
-                    params['device_name'] = device
-
+            async def _refresh_responses() -> None:
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
-                            url,
-                            params=params,
+                    async with aiohttp.ClientSession() as http:
+                        async with http.get(
+                            f"{base_url}/api/agent/responses",
+                            params={"limit": "30"},
                             timeout=aiohttp.ClientTimeout(total=10),
                         ) as resp:
                             if resp.status != 200:
@@ -195,70 +305,9 @@ def create_page() -> None:
                 except Exception:
                     return
 
-                _render_responses(data.get('responses', []))
+                _render_responses(data.get("responses", []))
 
-            def _render_responses(responses: List[Dict[str, Any]]) -> None:
-                responses_container.clear()
-                with responses_container:
-                    if not responses:
-                        ui.label(
-                            'No agent responses found yet. '
-                            'Trigger an analysis above or wait for results.'
-                        ).classes('text-gray-500 italic p-4')
-                        return
-
-                    for r in responses:
-                        _render_response_card(r)
-
-            def _render_response_card(r: Dict[str, Any]) -> None:
-                status = r.get('status', 'unknown')
-                color = _status_badge_color(status)
-                anomaly_time = r.get('anomaly_time', 'N/A')
-                clip_path = r.get('clip_path', 'N/A')
-                session_id = r.get('session_id', 'N/A')
-                summary = r.get('summary', '')
-                created_at = r.get('created_at', '')
-                stored_at = r.get('stored_at', '')
-                error_msg = r.get('error_message', '')
-                request_id = r.get('request_id', 'N/A')
-
-                with ui.card().classes('w-full shadow-md'):
-                    with ui.row().classes('w-full justify-between items-start'):
-                        with ui.column().classes('gap-1'):
-                            with ui.row().classes('items-center gap-2'):
-                                ui.badge(status.upper(), color=color).classes('text-xs')
-                                ui.label(f'Request: {request_id}').classes('font-bold text-gray-800')
-                            ui.label(f'Anomaly Time: {anomaly_time}').classes('text-sm text-gray-600')
-                            ui.label(f'Clip: {clip_path}').classes(
-                                'text-xs text-gray-500 font-mono truncate max-w-xl'
-                            ).tooltip(clip_path)
-                            ui.label(f'Session: {session_id}').classes('text-xs text-gray-400')
-                        ui.label(created_at[:19] if created_at else '').classes(
-                            'text-xs text-gray-400 mt-1'
-                        )
-
-                    ui.separator().classes('my-2')
-
-                    if status == 'success' and summary:
-                        with ui.expansion(
-                            'Agent Summary', icon='psychology', value=True
-                        ).classes('w-full'):
-                            ui.markdown(summary).classes('text-sm')
-                    elif status == 'error':
-                        ui.label(f'Error: {error_msg}').classes('text-red-600 text-sm')
-                    else:
-                        ui.label('No summary available.').classes(
-                            'text-gray-400 text-sm italic'
-                        )
-
-                    if stored_at:
-                        ui.label(f'📁 {stored_at}').classes(
-                            'text-xs text-gray-400 font-mono mt-2 truncate'
-                        ).tooltip(stored_at)
-
-            # Wire up controls
             refresh_btn.on_click(_refresh_responses)
-            device_filter.on('blur', lambda: ui.timer(0.1, _refresh_responses, once=True))
             ui.timer(_POLL_INTERVAL_SEC, _refresh_responses)
             ui.timer(0.1, _refresh_responses, once=True)
 

@@ -13,11 +13,13 @@ goes via the Edge Server's REST API so the full production path is exercised:
             → AgentApiClient.analyze_anomaly()
                 → adk web             (Agentic Framework, port 8000)
             → AnomalyResponseStore.save()
-                → uploads/agent_responses/<device>/<date>/<time_id>/
+                → uploads/agent_responses/<Anomaly_YYYY-MM-DD>/<HHMMSS_uuid>/
                     response.json
                     request.json
                     summary.txt
                     session_info.txt   ← ADK session lookup helper
+                    video_clips/       ← video clip(s) for this anomaly
+                    machine_anomaly_data/ ← machine/sensor data
 
 Usage examples
 --------------
@@ -31,7 +33,6 @@ python tests/submit_anomaly_to_edge.py \\
     --anomaly-time 2025-09-17T14:36:50 \\
     --clip-start-time 2025-09-17T14:36:20 \\
     --log-path /Users/.../mqtt_trace_20250917.log \\
-    --device-name cesar_rig_a \\
     --error "missed expected message" \\
     --expected-topic allspark/anomaly_detected \\
     --mqtt-messages '[{"topic":"rng120/status","payload":"bolt_tightened"}]' \\
@@ -107,7 +108,6 @@ class AnomalySubmitter:
         anomaly_time:    ISO-8601 timestamp of the anomaly (auto-derived if None).
         clip_start_time: ISO-8601 timestamp of clip start (optional).
         log_path:        Path to associated MQTT/log file (optional).
-        device_name:     Device label used to organise stored responses.
         error:           Error label that triggered the anomaly.
         expected_topic:  MQTT topic that was expected but missed.
         mqtt_messages:   List of MQTT message dicts captured around the anomaly.
@@ -128,7 +128,6 @@ class AnomalySubmitter:
         anomaly_time: Optional[str] = None,
         clip_start_time: str = "",
         log_path: str = "",
-        device_name: str = "cesar_rig",
         error: str = "N/A",
         expected_topic: str = "N/A",
         mqtt_messages: Optional[List[Dict[str, Any]]] = None,
@@ -140,7 +139,6 @@ class AnomalySubmitter:
 
         self.clip_path = clip_path
         self.log_path = log_path
-        self.device_name = device_name
         self.error = error
         self.expected_topic = expected_topic
         self.mqtt_messages: List[Dict[str, Any]] = mqtt_messages or []
@@ -201,7 +199,7 @@ class AnomalySubmitter:
         if stored_at:
             self._show_session_info_file(stored_at)
 
-        # 6. Response count for this device
+        # 6. Response count
         self._print_response_count()
 
         return True
@@ -410,7 +408,6 @@ class AnomalySubmitter:
         print(f"  clip_path (sent to agent) : {effective_clip}")
         print(f"  original clip_path        : {self.clip_path}")
         print(f"  anomaly_time              : {self.anomaly_time}")
-        print(f"  device_name               : {self.device_name}")
         print(f"  error                     : {self.error}")
         if self.mqtt_messages:
             print(f"  mqtt_messages             : {len(self.mqtt_messages)} message(s)")
@@ -423,7 +420,6 @@ class AnomalySubmitter:
             "clip_start_time": self.clip_start_time,
             "error": self.error,
             "expected_topic": self.expected_topic,
-            "device_name": self.device_name,
             "mqtt_clip_messages": self.mqtt_messages,
             "extra_metadata": {
                 **self.extra_metadata,
@@ -496,13 +492,13 @@ class AnomalySubmitter:
             print(p.read_text(encoding="utf-8"))
 
     def _print_response_count(self) -> None:
-        print("[4/4] Response count for this device …")
+        print("[4/4] Total response count …")
         data = self._http_get(
             self._RESPONSES_PATH,
-            params={"device_name": self.device_name, "limit": "1"},
+            params={"limit": "1"},
         )
         if data and "count" in data:
-            print(f"  Total stored responses for '{self.device_name}': {data['count']}")
+            print(f"  Total stored responses: {data['count']}")
         else:
             print("  [warn] Could not retrieve response count.")
 
@@ -520,10 +516,6 @@ class AnomalySubmitter:
         print(f"  Timestamp   : {self.anomaly_time}")
         print("=" * 64)
 
-
-# ===========================================================================
-# CLI entry point
-# ===========================================================================
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -568,12 +560,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # Device / context
-    p.add_argument(
-        "--device-name",
-        default="cesar_rig",
-        metavar="NAME",
-        help="Device label used to organise stored responses (default: cesar_rig).",
-    )
     p.add_argument(
         "--error",
         default="N/A",
@@ -640,7 +626,6 @@ def main() -> None:
         anomaly_time=args.anomaly_time,
         clip_start_time=args.clip_start_time,
         log_path=args.log_path,
-        device_name=args.device_name,
         error=args.error,
         expected_topic=args.expected_topic,
         mqtt_messages=mqtt_messages,

@@ -5,8 +5,9 @@ This guide walks you through the complete workflow:
 1. Starting the **Agentic Framework** (`adk web`)
 2. Starting the **Edge Server** (aiohttp on port 8080)
 3. Starting the **Control Plane dashboard** (NiceGUI on port 8081)
-4. Simulating an anomaly to trigger agent detection
-5. Viewing the agent response in the dashboard
+4. Submitting a new anomaly for agent analysis
+5. Reviewing and resuming an investigation via the ADK dev-ui
+6. Viewing agent responses in the dashboard
 
 ---
 
@@ -33,20 +34,23 @@ mosquitto -d                    # run in background manually
 
 ```
 AllSpark-edge-server/
-├── config.json                      # ← agentConfig + agentResponsePath added here
+├── config.json                      # ← agentConfig + agentResponsePath here
 ├── python/
 │   ├── server.py                    # aiohttp Edge Server (port 8080)
-│   ├── agent_service/               # NEW: agent integration package
+│   ├── agent_service/               # Agent integration package
 │   │   ├── __init__.py
 │   │   ├── models.py                # AnomalyRequest / AgentResponse dataclasses
-│   │   ├── client.py                # AgentApiClient (async HTTP → adk web)
+│   │   ├── client.py                # AgentApiClient – analyze_anomaly + continue_session
 │   │   └── response_store.py        # AnomalyResponseStore (file-system persistence)
 │   ├── control_plane/
 │   │   ├── main.py                  # NiceGUI Control Plane (port 8081)
+│   │   ├── theme.py                 # Header nav: Dashboard · Clients · Capture · Agent · Debug · Settings
 │   │   └── pages/
-│   │       └── agent.py             # UPDATED: live form + response feed
+│   │       ├── agent.py             # Primary investigation UI (two-column, Open in ADK)
+│   │       └── debug.py             # Manual Trigger form (developer / test use)
 │   └── tests/
-│       ├── test_agent_service.py    # 30 unit + async integration tests
+│       ├── test_agent_service.py    # Unit + async integration tests
+│       ├── submit_anomaly_to_edge.py # CLI tool – new anomaly submission
 │       └── e2e_agent_workflow.py    # CLI smoke-test against a running server
 ```
 
@@ -83,7 +87,11 @@ Verify the framework is reachable:
 
 ```bash
 curl -s http://localhost:8000/api/health | python3 -m json.tool
-# or just check the ADK UI at http://localhost:8000
+```
+
+The ADK developer UI is available at:
+```
+http://localhost:8000/dev-ui/
 ```
 
 ---
@@ -108,6 +116,7 @@ Open `AllSpark-edge-server/config.json` and confirm / adjust the `agentConfig` b
 ```
 
 > `agent_app_name` must match the app name registered in `adk web` (default: `allspark_agent`).
+> The control plane reads `agent_url` to derive the ADK base URL for the "Open in ADK" button.
 
 ---
 
@@ -116,9 +125,7 @@ Open `AllSpark-edge-server/config.json` and confirm / adjust the `agentConfig` b
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/AllSpark-edge-server/python
 
-# Activate the edge server environment
 source venv/bin/activate   # or: conda activate <env>
-
 python server.py
 ```
 
@@ -129,11 +136,9 @@ Loaded config from .../config.json
 Agent client initialised. Responses stored at: .../uploads/agent_responses/
 AnomalyResponseStore initialised at .../uploads/agent_responses/
 Server is running on http://0.0.0.0:8080
-WebSocket endpoint: ws://192.168.x.x:8080
-Advertising Bonjour service: AllSpark Server on 192.168.x.x:8080
 ```
 
-Verify it's up:
+Verify:
 
 ```bash
 curl http://localhost:8080/api/health
@@ -143,25 +148,30 @@ curl http://localhost:8080/api/health
 
 ## Step 4 – Start the Control Plane Dashboard
 
-Open a **new terminal**:
-
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/AllSpark-edge-server/python/control_plane
 
-source ../venv/bin/activate   # same environment as the edge server
-
+source ../venv/bin/activate
 python main.py
 ```
 
-Open the dashboard in your browser:
+Open the dashboard:
 
 ```
 http://localhost:8081/agent
 ```
 
-You should see the **Agentic Analysis** page with:
-- A form to manually trigger analysis (top)
-- An empty "Agent Analysis Responses" feed (bottom, auto-refreshes every 10 s)
+### Header navigation
+
+```
+AllSpark  | Dashboard  Clients  Capture  Agent  Debug  Settings  👤 test-user
+```
+
+| Page | URL | Purpose |
+|---|---|---|
+| **Agent** | `/agent` | Full-width response feed + "Continue Investigation" (embedded ADK viewer) |
+| **Debug** | `/debug` | Manual anomaly submission form (developer / test use) |
+| **Settings** | `/settings` | Edit `config.json` values |
 
 ---
 
@@ -169,125 +179,150 @@ You should see the **Agentic Analysis** page with:
 
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/AllSpark-edge-server/python
-
 python -m pytest tests/test_agent_service.py -v
 ```
 
-Expected: **30 passed** covering models, client, store, and async mocked HTTP.
-
-```
-tests/test_agent_service.py::TestAnomalyRequest::test_round_trip_dict PASSED
-...
-tests/test_agent_service.py::TestAgentApiClientAsync::test_analyze_anomaly_success PASSED
-======= 30 passed in 0.25s =======
-```
+Expected: **30 passed** (models, client, store, async mocked HTTP).
 
 ---
 
-## Step 6 – Simulate an Anomaly (Method A: Dashboard Form)
+## Step 6 – Submit a New Anomaly (Method A: Debug page)
 
-With all three services running, go to:
+Navigate to `http://localhost:8081/debug` (or click **Debug** in the header).
 
-```
-http://localhost:8081/agent
-```
+The form is pre-filled with working defaults:
 
-Fill in the **Trigger Anomaly Analysis** form:
-
-| Field | Example Value |
+| Field | Default Value |
 |---|---|
-| Anomaly Clip Path | `/tmp/test_anomaly_clip.mp4` (or a real clip path) |
-| Log Path | `/tmp/mqtt_trace.log` (can be empty) |
-| Anomaly Time (ISO-8601) | `2026-04-13T12:00:00` |
-| Clip Start Time | `2026-04-13T11:59:30` |
-| Device Name | `cesar_rig_a` |
+| Anomaly Clip Filename | `anomaly_clip_20250917_143650.mp4` |
+| Anomaly Time (ISO-8601) | `2025-09-17T14:36:50` |
+| Clip Start Time | `2025-09-17T14:36:20` |
 | Error / Label | `missed expected message` |
 | Expected MQTT Topic | `allspark/anomaly_detected` |
-| Video Storage Path | `/path/to/video/chunks/` (optional) |
+| MQTT Messages | *(empty or paste a JSON array)* |
 
 Click **"Dispatch to Agentic Framework"**.
 
-The button disables while the agent processes. On completion:
-- A green notification shows the `request_id`
-- The status label shows the storage path (`✅ Stored at: .../uploads/agent_responses/...`)
-- The response feed below refreshes and shows the new card with the agent summary
+> **Important:** The clip filename must be the plain basename (no directory prefix).
+> The agent's `VideoDataLoader` locates the file by `endswith()` matching against its configured
+> data folder (`allspark_agent/sample_data/cesar/camera-video/`).
+> Use `submit_anomaly_to_edge.py` (Method B below) to stage the file automatically.
+
+After dispatch succeeds, the result panel shows inline:
+- The **ADK session ID** and an **"Open Session in ADK"** button
+- The full ADK dev-ui URL for that session
+- The storage path on disk
+- An expandable agent summary
 
 ---
 
-## Step 7 – Simulate an Anomaly (Method B: curl / CLI)
+## Step 7 – Submit a New Anomaly (Method B: CLI)
 
-With the edge server running, POST directly to the new endpoint:
+The CLI script stages the clip into the agent's data folder before submission:
+
+```bash
+cd /Users/bos2pi/git/Bosch-Github/AllSpark-edge-server/python
+
+# Minimal – timestamp auto-derived from filename
+python tests/submit_anomaly_to_edge.py \
+    --clip-path /path/to/anomaly_clip_20250917_143650.mp4
+
+# Full specification
+python tests/submit_anomaly_to_edge.py \
+    --clip-path /path/to/anomaly_clip_20250917_143650.mp4 \
+    --anomaly-time 2025-09-17T14:36:50 \
+    --clip-start-time 2025-09-17T14:36:20 \
+    --error "missed expected message" \
+    --expected-topic allspark/anomaly_detected \
+    --mqtt-messages '[{"topic":"rng120/status","payload":"bolt_tightened"}]' \
+    --edge-port 8080
+```
+
+The script prints the ADK session ID and a direct dev-ui URL at the end:
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  AllSpark Agent – ADK Session Lookup                         ║
+║                                                              ║
+║  Session ID  : edge_session_2025-09-17T14_36_50_abc123       ║
+║                                                              ║
+║  Open ADK UI : http://localhost:8000                         ║
+║  Navigate to : Sessions tab                                  ║
+║  Search for  : edge_session_2025-09-17T14_36_50_abc123       ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## Step 8 – Submit a New Anomaly (Method C: curl)
 
 ```bash
 curl -s -X POST http://localhost:8080/api/agent/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "clip_path": "/tmp/test_anomaly_clip.mp4",
-    "log_path": "",
-    "anomaly_time": "2026-04-13T12:00:00",
-    "clip_start_time": "2026-04-13T11:59:30",
+    "clip_path": "anomaly_clip_20250917_143650.mp4",
+    "anomaly_time": "2025-09-17T14:36:50",
+    "clip_start_time": "2025-09-17T14:36:20",
     "error": "missed expected message",
     "expected_topic": "allspark/anomaly_detected",
-    "device_name": "cesar_rig_a",
     "mqtt_clip_messages": [
-      {"topic": "rng120/status", "payload": "ok", "t": 1744545570000}
+      {"topic": "rng120/status", "payload": "bolt_tightened"}
     ]
   }' | python3 -m json.tool
 ```
 
-Successful response (agent online):
+Successful response:
 
 ```json
 {
   "success": true,
-  "request_id": "2026-04-13T120000_a1b2c3",
-  "session_id": "edge_session_2026-04-13T120000_a1b2c3_x9z1f2",
+  "request_id": "2025-09-17T14_36_50_abc123",
+  "session_id": "edge_session_2025-09-17T14_36_50_abc123_x9z1f2",
   "status": "success",
-  "summary": "The video clip shows the CESAR cell bolt assembly...",
-  "stored_at": "/Users/.../uploads/agent_responses/cesar_rig_a/2026-04-13/120000_a1b2c3",
+  "summary": "The video clip shows the CESAR cell bolt assembly…",
+  "stored_at": "/Users/.../uploads/agent_responses/Anomaly_2025-09-17/143650_abc123",
   "error_message": ""
 }
 ```
 
-Graceful response (agent offline):
+---
 
-```json
-{
-  "success": false,
-  "status": "error",
-  "error_message": "Session creation failed: ...",
-  "stored_at": ""
-}
+## Step 9 – Resume an Investigation via the Agent Page
+
+Once at least one response is stored, go to `http://localhost:8081/agent`.
+
+The Agent page shows a full-width **Recent Responses** feed (auto-refreshes every 10 s).
+
+Each stored response renders as a card with:
+- Status badge (SUCCESS / ERROR), clip filename, anomaly time, session ID
+- Expandable **Agent Summary** (markdown)
+- **Continue Investigation** button – opens the embedded ADK session viewer at `/agent/session`
+- **View in Rerun.io** button (successful analyses only)
+- Storage path on disk
+
+### Embedded ADK session viewer (`/agent/session`)
+
+Clicking **Continue Investigation** navigates to a dedicated page that embeds the ADK
+developer UI in an iframe, directly at the session for that anomaly:
+
 ```
+http://localhost:8000/dev-ui/?app=allspark_agent&user=edge_server_user&session=<session_id>
+```
+
+The page also provides:
+- **"Open in New Window"** – pops the same URL into a full browser tab
+- **"← Back to Responses"** – returns to the main Agent page
+
+Inside the ADK dev-ui session you can:
+- Read the full conversation history
+- Send follow-up messages to the agent
+- Inspect tool calls and intermediate reasoning steps
+
+The session URL includes the `user` parameter derived from `agent_user_id` in `config.json`.
 
 ---
 
-## Step 8 – Simulate an Anomaly (Method C: MQTT → full pipeline)
-
-This replicates the full `video_clipper_edge_server.py` → `anomaly_agent_sender.py` pipeline using the test publisher from `allspark-datacapture`:
-
-```bash
-# Terminal A – video clipper (listens on allspark/anomaly_detected, publishes allspark/clip_generated)
-cd /Users/bos2pi/git/Bosch-Github/allspark-datacapture
-python utilities/video_clipper_edge_server.py \
-  -c configs/mqtt_config.json \
-  -v /path/to/video/chunks/ \
-  -d 30 \
-  -o /tmp/anomaly_clips/
-
-# Terminal B – publish a simulated anomaly MQTT message
-python utilities/test_anomaly_publisher.py \
-  -c configs/mqtt_config.json \
-  -t "2026-04-13_12:00:00"
-```
-
-Then use `curl` (Step 7) or the dashboard form (Step 6) to forward the generated clip path to the Edge Server for agent analysis.
-
-> **Or** configure `anomaly_agent_sender.py` to point at the Edge Server endpoint instead of calling the agent directly – see the [existing README](../../../allspark-datacapture/utilities/README_anomaly_agent_sender.md) for that flow.
-
----
-
-## Step 9 – Run the E2E Smoke Test Script
+## Step 10 – Run the E2E Smoke Test
 
 With **both the edge server and agentic framework running**:
 
@@ -297,47 +332,14 @@ cd /Users/bos2pi/git/Bosch-Github/AllSpark-edge-server/python
 python tests/e2e_agent_workflow.py \
   --port 8080 \
   --clip-path /tmp/test_anomaly_clip.mp4 \
-  --anomaly-time "2026-04-13T12:00:00"
+  --anomaly-time "2025-09-17T14:36:50"
 ```
-
-This script:
-1. Checks `/api/health`
-2. POSTs to `/api/agent/analyze`
-3. GETs `/api/agent/responses?device_name=e2e_test_device`
-4. GETs `/api/agent/responses` (all)
 
 Expected final output:
 
 ```
 ✅ All E2E checks passed.
 ```
-
-> If the agentic framework is offline the script still passes – it accepts a graceful `status=error` from the endpoint. A non-200 HTTP code or an unreachable edge server is the only hard failure.
-
----
-
-## Step 10 – View Responses in the Dashboard
-
-Go to `http://localhost:8081/agent`.
-
-Each stored response renders as a card:
-
-```
-┌─────────────────────────────────────────────────────┐
-│ [SUCCESS]  Request: 2026-04-13T120000_a1b2c3         │
-│ Anomaly Time: 2026-04-13T12:00:00                   2026-04-13T12:00:04 │
-│ Clip: /tmp/test_anomaly_clip.mp4                    │
-│ Session: edge_session_2026-...                      │
-├─────────────────────────────────────────────────────┤
-│ ▼ Agent Summary                                     │
-│   The video clip shows the CESAR cell bolt          │
-│   assembly at T+5s. The washer was misaligned...    │
-├─────────────────────────────────────────────────────┤
-│ 📁 .../uploads/agent_responses/cesar_rig_a/2026-04-13/120000_a1b2c3 │
-└─────────────────────────────────────────────────────┘
-```
-
-Use the **Filter by Device Name** input to narrow results and the **Refresh** button to force an immediate reload.
 
 ---
 
@@ -347,15 +349,17 @@ Every analysis creates a timestamped subfolder:
 
 ```
 uploads/agent_responses/
-  <device_name>/
-    <YYYY-MM-DD>/
-      <HHMMSS_<id>>/
-        response.json    ← full AgentResponse (status, summary, raw_response, …)
-        request.json     ← original AnomalyRequest (clip_path, anomaly_time, …)
-        summary.txt      ← plain-text agent summary (human-readable)
+  Anomaly_<YYYY-MM-DD>/
+    <HHMMSS_<id>>/
+      response.json          ← full AgentResponse
+      request.json           ← original AnomalyRequest
+      summary.txt            ← plain-text agent summary
+      session_info.txt       ← ADK session lookup details (URL, session ID, user ID)
+      video_clips/
+      machine_anomaly_data/
 ```
 
-List the latest responses via the API:
+List via API:
 
 ```bash
 curl "http://localhost:8080/api/agent/responses?limit=5" | python3 -m json.tool
@@ -363,16 +367,62 @@ curl "http://localhost:8080/api/agent/responses?limit=5" | python3 -m json.tool
 
 ---
 
+## API Reference
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/agent/analyze` | Start a **new** anomaly analysis (new ADK session) |
+| `POST` | `/api/agent/continue` | Send follow-up to an **existing** ADK session |
+| `GET` | `/api/agent/responses?limit=N` | List stored responses, newest first |
+| `GET` | `/api/agent/responses/{stored_at_b64}` | Retrieve a single response by path |
+
+### `/api/agent/analyze` request body
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `clip_path` | `str` | ✅ | Plain basename – no directory prefix |
+| `anomaly_time` | `str` | ✅ | ISO-8601 timestamp |
+| `clip_start_time` | `str` | | ISO-8601 clip start |
+| `log_path` | `str` | | Path to MQTT/log file |
+| `error` | `str` | | Error label |
+| `expected_topic` | `str` | | Expected MQTT topic |
+| `mqtt_clip_messages` | `list` | | MQTT message dicts |
+| `video_storage_path` | `str` | | Root video chunk path |
+| `extra_metadata` | `dict` | | Forwarded verbatim to agent |
+
+---
+
+## ADK Session URL Format
+
+The control plane constructs the ADK dev-ui session URL using values from `config.json`:
+
+```
+{agent_url stripped of /run}/dev-ui/?app={agent_app_name}&user={agent_user_id}&session={session_id}
+```
+
+Example (with default config):
+```
+http://localhost:8000/dev-ui/?app=allspark_agent&user=edge_server_user&session=edge_session_2025-09-17T14_36_50_abc123_x9z1f2
+```
+
+This URL is passed (URL-encoded) as the `adk_url` query parameter to `/agent/session`,
+which renders it in an iframe identical to the Rerun viewer page.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| `503 Agent service not initialised` | Edge server started without loading config – make sure you run `python server.py` from `AllSpark-edge-server/python/` |
-| `Session creation failed: HTTP 404` | `agent_app_name` in `config.json` doesn't match the app registered in `adk web` |
-| `Connection refused` on agent URL | Agentic Framework not running – start `adk web` first |
-| Agent times out | Increase `agent_timeout` in `config.json` (default 300 s); the VLM video analysis can be slow |
-| Dashboard shows "No agent responses found yet" | The edge server and control plane both need to be running; check the edge port (`8080`) in the dashboard URL |
-| MQTT "start error" in dashboard | Mosquitto not running on `127.0.0.1:1883` – `brew services start mosquitto` |
+| `503 Agent service not initialised` | Run `python server.py` from `AllSpark-edge-server/python/` |
+| `Session creation failed: HTTP 404` | `agent_app_name` in `config.json` doesn't match `adk web` |
+| `Connection refused` on agent URL | Start `adk web` first |
+| Agent times out | Increase `agent_timeout` in `config.json` (default 300 s) |
+| Dashboard shows "No agent responses yet" | Edge server not running or wrong port |
+| Dropdown shows "No anomalies found" | Submit a new anomaly via the Debug page |
+| "Continue Investigation" not shown | Response has no session ID – resubmit via Debug |
+| Clip not found by agent | Ensure basename exists in `allspark_agent/sample_data/cesar/camera-video/` |
+| MQTT "start error" | Run `brew services start mosquitto` |
 
 ---
 
@@ -394,15 +444,22 @@ cd AllSpark-edge-server/python/control_plane && source ../venv/bin/activate && p
 # 5. Run unit tests
 cd AllSpark-edge-server/python && python -m pytest tests/test_agent_service.py -v
 
-# 6. Trigger analysis via curl
+# 6a. Submit new anomaly via CLI (recommended – stages clip automatically)
+python tests/submit_anomaly_to_edge.py \
+  --clip-path /path/to/anomaly_clip_20250917_143650.mp4
+
+# 6b. Submit new anomaly via curl
 curl -X POST http://localhost:8080/api/agent/analyze \
   -H "Content-Type: application/json" \
-  -d '{"clip_path":"/tmp/clip.mp4","anomaly_time":"2026-04-13T12:00:00","device_name":"rig_a"}'
+  -d '{"clip_path":"anomaly_clip_20250917_143650.mp4","anomaly_time":"2025-09-17T14:36:50"}'
 
-# 7. Check stored responses
+# 7. Open investigation in embedded ADK viewer (from Agent page → Continue Investigation)
+open "http://localhost:8081/agent/session?adk_url=http%3A%2F%2Flocalhost%3A8000%2Fdev-ui%2F%3Fapp%3Dallspark_agent%26user%3Dedge_server_user%26session%3D<session_id>"
+
+# 8. Check stored responses
 curl "http://localhost:8080/api/agent/responses?limit=5"
 
-# 8. Run E2E smoke test
+# 9. Run E2E smoke test
 cd AllSpark-edge-server/python && python tests/e2e_agent_workflow.py --port 8080
 ```
 

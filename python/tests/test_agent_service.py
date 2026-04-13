@@ -235,12 +235,32 @@ class TestAnomalyResponseStore:
         sample_response: AgentResponse,
         sample_request: AnomalyRequest,
     ):
-        stored_at = tmp_store.save(sample_response, sample_request, device_name="rig_a")
+        stored_at = tmp_store.save(sample_response, sample_request)
         target = Path(stored_at)
         assert target.exists()
         assert (target / "response.json").exists()
         assert (target / "request.json").exists()
         assert (target / "summary.txt").exists()
+
+    def test_save_creates_subdirs(
+        self,
+        tmp_store: AnomalyResponseStore,
+        sample_response: AgentResponse,
+    ):
+        stored_at = tmp_store.save(sample_response)
+        target = Path(stored_at)
+        assert (target / "video_clips").is_dir()
+        assert (target / "machine_anomaly_data").is_dir()
+
+    def test_save_uses_anomaly_date_folder(
+        self,
+        tmp_store: AnomalyResponseStore,
+        sample_response: AgentResponse,
+    ):
+        stored_at = tmp_store.save(sample_response)
+        # The parent folder should be named Anomaly_YYYY-MM-DD
+        date_folder = Path(stored_at).parent.name
+        assert date_folder.startswith("Anomaly_")
 
     def test_save_updates_stored_at(
         self,
@@ -256,20 +276,11 @@ class TestAnomalyResponseStore:
         sample_response: AgentResponse,
         sample_request: AnomalyRequest,
     ):
-        tmp_store.save(sample_response, sample_request, device_name="rig_b")
+        tmp_store.save(sample_response, sample_request)
         results = tmp_store.list_responses()
         assert len(results) >= 1
         assert any(r.request_id == sample_response.request_id for r in results)
 
-    def test_list_responses_by_device(
-        self,
-        tmp_store: AnomalyResponseStore,
-        sample_response: AgentResponse,
-    ):
-        tmp_store.save(sample_response, device_name="rig_x")
-        # Should not find results for a different device
-        results_other = tmp_store.list_responses(device_name="rig_y")
-        assert len(results_other) == 0
 
     def test_get_response(
         self,
@@ -541,7 +552,6 @@ class TestEdgeServerEndpoints:
                     json={
                         "clip_path": "/tmp/clip.mp4",
                         "anomaly_time": "2026-04-13T12:00:00",
-                        "device_name": "test_rig",
                     },
                 )
                 assert resp.status == 200
@@ -615,7 +625,7 @@ class TestEdgeServerEndpoints:
             status="success",
             summary="Pre-stored test summary.",
         )
-        store.save(test_response, device_name="test_rig")
+        store.save(test_response)
 
         async with self._make_app_context(tmp_path, AsyncMock(), store) as app:
             from aiohttp.test_utils import TestClient, TestServer
@@ -627,33 +637,25 @@ class TestEdgeServerEndpoints:
                 assert data["responses"][0]["request_id"] == "pre_stored_001"
                 assert data["responses"][0]["summary"] == "Pre-stored test summary."
 
-    async def test_responses_endpoint_device_filter(self, tmp_path: Path):
-        """Device name filter must only return responses for that device."""
+    async def test_responses_endpoint_multiple(self, tmp_path: Path):
+        """Multiple saves must all appear in the responses list."""
         store = AnomalyResponseStore(str(tmp_path / "responses"))
 
-        for device, rid in [("rig_a", "req_rig_a"), ("rig_b", "req_rig_b")]:
+        for rid in ["req_001", "req_002"]:
             store.save(
                 AgentResponse(
                     request_id=rid,
-                    clip_path=f"/tmp/{device}.mp4",
+                    clip_path=f"/tmp/{rid}.mp4",
                     anomaly_time="2026-04-13T10:00:00",
                     session_id="s",
                     status="success",
-                    summary=f"Summary for {device}",
+                    summary=f"Summary for {rid}",
                 ),
-                device_name=device,
             )
 
         async with self._make_app_context(tmp_path, AsyncMock(), store) as app:
             from aiohttp.test_utils import TestClient, TestServer
             async with TestClient(TestServer(app)) as client:
-                # Filter to rig_a only
-                resp = await client.get("/api/agent/responses?device_name=rig_a")
-                data = await resp.json()
-                assert data["count"] == 1
-                assert data["responses"][0]["request_id"] == "req_rig_a"
-
-                # No filter → both devices
                 resp_all = await client.get("/api/agent/responses")
                 data_all = await resp_all.json()
                 assert data_all["count"] == 2

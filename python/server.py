@@ -168,7 +168,6 @@ async def handle_agent_analyze(request):
         expected_topic     (str, optional)
         mqtt_clip_messages (list, optional)
         video_storage_path (str, optional)
-        device_name        (str, optional)  – used to organise stored responses
         extra_metadata     (dict, optional)
     """
     global _agent_client, _response_store
@@ -212,11 +211,9 @@ async def handle_agent_analyze(request):
 
     agent_response = await _agent_client.analyze_anomaly(anomaly_request)
 
-    device_name = body.get("device_name", "default")
     stored_at = _response_store.save(
         agent_response,
         anomaly_request,
-        device_name,
         agent_config=config.get("agentConfig"),
     )
 
@@ -238,9 +235,82 @@ async def handle_agent_analyze(request):
     )
 
 
+async def handle_agent_continue(request):
+    """
+    POST /api/agent/continue
+
+    Continue an investigation by sending a follow-up prompt to an existing
+    ADK session.  The session must have been created by a prior /api/agent/analyze
+    call; its session_id is stored in the AgentResponse.
+
+    Request body (JSON):
+        session_id    (str, required) – the ADK session to continue
+        prompt        (str, required) – the follow-up question / instruction
+        clip_path     (str, optional) – carried forward for attribution
+        anomaly_time  (str, optional) – carried forward for attribution
+    """
+    global _agent_client, _response_store
+
+    if _agent_client is None or _response_store is None:
+        return web.json_response(
+            {"success": False, "error": "Agent service not initialised"},
+            status=503,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid JSON request body"}, status=400
+        )
+
+    session_id = body.get("session_id", "").strip()
+    prompt = body.get("prompt", "").strip()
+
+    if not session_id or not prompt:
+        return web.json_response(
+            {"success": False, "error": "session_id and prompt are required"},
+            status=400,
+        )
+
+    clip_path = body.get("clip_path", "")
+    anomaly_time = body.get("anomaly_time", "")
+
+    print(f"[agent/continue] Continuing session {session_id} with prompt: {prompt[:80]}…")
+
+    agent_response = await _agent_client.continue_session(
+        session_id=session_id,
+        prompt=prompt,
+        clip_path=clip_path,
+        anomaly_time=anomaly_time,
+    )
+
+    stored_at = _response_store.save(
+        agent_response,
+        agent_config=config.get("agentConfig"),
+    )
+
+    print(
+        f"[agent/continue] Follow-up complete. Status={agent_response.status}. "
+        f"Stored at: {stored_at}"
+    )
+
+    return web.json_response(
+        {
+            "success": agent_response.is_success,
+            "request_id": agent_response.request_id,
+            "session_id": agent_response.session_id,
+            "status": agent_response.status,
+            "summary": agent_response.summary,
+            "stored_at": stored_at,
+            "error_message": agent_response.error_message,
+        }
+    )
+
+
 async def handle_agent_responses(request):
     """
-    GET /api/agent/responses?device_name=<name>&limit=<n>
+    GET /api/agent/responses?limit=<n>
 
     Returns a list of stored agent responses, newest first.
     """
@@ -252,13 +322,12 @@ async def handle_agent_responses(request):
             status=503,
         )
 
-    device_name = request.rel_url.query.get("device_name")
     try:
         limit = int(request.rel_url.query.get("limit", 50))
     except ValueError:
         limit = 50
 
-    responses = _response_store.list_responses(device_name=device_name, limit=limit)
+    responses = _response_store.list_responses(limit=limit)
     return web.json_response(
         {
             "success": True,
@@ -528,6 +597,7 @@ async def init_app():
     app.router.add_get('/api/config', handle_config)
     app.router.add_post('/api/command/{connection_id}', handle_command_post)
     app.router.add_post('/api/agent/analyze', handle_agent_analyze)
+    app.router.add_post('/api/agent/continue', handle_agent_continue)
     app.router.add_get('/api/agent/responses', handle_agent_responses)
     app.router.add_get('/api/agent/responses/{stored_at_b64}', handle_agent_response_detail)
     app.router.add_static('/third-party', path=os.path.join("..", "third-party"), name='third-party')

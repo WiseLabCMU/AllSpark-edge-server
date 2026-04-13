@@ -113,6 +113,70 @@ class AgentApiClient:
             summary=summary,
         )
 
+    async def continue_session(
+        self,
+        session_id: str,
+        prompt: str,
+        clip_path: str,
+        anomaly_time: str,
+    ) -> AgentResponse:
+        """
+        Send a follow-up message to an *existing* ADK session (identified by
+        *session_id*) without creating a new one.  This implements the
+        "investigate further" flow from the dashboard's Investigate tab.
+
+        The session is re-registered via POST (409 → already exists → safe to
+        continue), then the user's prompt is forwarded directly.
+
+        Args:
+            session_id:   The ADK session ID that was created during the
+                          original analysis (stored in AgentResponse.session_id).
+            prompt:       The follow-up question / instruction from the operator.
+            clip_path:    Clip path carried forward for attribution only.
+            anomaly_time: Original anomaly timestamp carried forward.
+
+        Returns:
+            AgentResponse with status "success" or "error".
+        """
+        request_id = f"followup_{re.sub(r'[^a-zA-Z0-9_]', '_', anomaly_time)[:20]}_{uuid.uuid4().hex[:6]}"
+        timeout = aiohttp.ClientTimeout(total=self._timeout)
+
+        async with aiohttp.ClientSession(timeout=timeout) as http_session:
+            # Re-register the session (409 = already exists = fine)
+            created, err = await self._create_session(http_session, session_id)
+            if not created:
+                return AgentResponse(
+                    request_id=request_id,
+                    clip_path=clip_path,
+                    anomaly_time=anomaly_time,
+                    session_id=session_id,
+                    status="error",
+                    error_message=f"Could not reach session {session_id}: {err}",
+                )
+
+            ok, raw, err = await self._send_message(http_session, session_id, prompt)
+
+        if not ok:
+            return AgentResponse(
+                request_id=request_id,
+                clip_path=clip_path,
+                anomaly_time=anomaly_time,
+                session_id=session_id,
+                status="error",
+                error_message=err,
+            )
+
+        summary = self._extract_summary(raw)
+        return AgentResponse(
+            request_id=request_id,
+            clip_path=clip_path,
+            anomaly_time=anomaly_time,
+            session_id=session_id,
+            status="success",
+            raw_response=raw,
+            summary=summary,
+        )
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

@@ -23,7 +23,7 @@ def menu(navtitle: str):
             ui.link('Clients', '/clients').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Capture', '/capture').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.link('Agent', '/agent').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Rerun', '/rerun').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
+            ui.link('Debug', '/debug').classes('text-white no-underline hover:text-yellow-300 mx-2 transition-colors text-xs opacity-70')
             ui.link('Settings', '/settings').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
             ui.label('👤 test-user').classes('ml-8 mr-2 text-sm text-gray-300')
 
