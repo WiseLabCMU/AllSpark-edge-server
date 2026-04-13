@@ -14,7 +14,7 @@ settings.create_page()
 
 @ui.page('/')
 def index():
-    ui.navigate.to('/anomalies')
+    ui.navigate.to('/agent')
 
 if __name__ in {"__main__", "__mp_main__"}:
     # Read port from config.json and start NiceGUI on config['port'] + 1 (default 8081).

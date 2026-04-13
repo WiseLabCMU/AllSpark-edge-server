@@ -19,12 +19,22 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
     with ui.header().classes('justify-between items-center bg-blue-grey-9'):
         ui.label('AllSpark Edge Server').classes('text-lg font-bold')
         with ui.row().classes('items-center'):
-            ui.link('Anomalies', '/anomalies').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Clients', '/clients').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Logs', '/logs').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Agent', '/agent').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Rerun', '/rerun').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
-            ui.link('Settings', '/settings').classes('text-white no-underline hover:text-blue-300 mx-2 transition-colors')
+            nav_items = [
+                ('Agent', '/agent', 'Agent'),
+                ('Anomalies', '/anomalies', 'Anomal'),
+                ('Clients', '/clients', 'Client'),
+                ('Logs', '/logs', 'Log'),
+                ('Rerun', '/rerun', 'Rerun'),
+                ('Settings', '/settings', 'Setting')
+            ]
+            for title, route, kw in nav_items:
+                base_classes = 'no-underline mx-2 transition-colors px-2 py-1 rounded'
+                if kw in navtitle:
+                    classes = f'{base_classes} text-blue-300 bg-blue-grey-8 font-bold'
+                else:
+                    classes = f'{base_classes} text-white hover:text-blue-300 hover:bg-blue-grey-8'
+                ui.link(title, route).classes(classes)
+                
             ui.label('👤 test-user').classes('ml-8 mr-2 text-sm text-gray-300')
 
     container_classes = 'w-full mx-auto p-4' + ('' if full_width else ' max-w-5xl mt-6')
