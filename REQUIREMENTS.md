@@ -48,7 +48,7 @@ graph LR
 | [python/server.py](python/server.py) | Python server (aiohttp) | `websocket_handler`, `handle_command_post`, `handle_status`, `handle_health`, `register_zeroconf`, `init_app` |
 | [node/server.js](node/server.js) | Node.js server | `requestHandler`, `wss.on("connection")`, `deepMerge`, `getLocalIP` |
 | [index.html](index.html) | Web control interface | `updateHealthStatus`, `updateConnectionStatus`, `sendUploadTimeRangeCommand` |
-| [config.json](config.json) | Shared configuration | `hostname`, `port`, `clientConfig`, `uploadPath`, `keyFile`, `certFile` |
+| [config.yaml](config.yaml) | Shared configuration | `hostname`, `port`, `clientConfig`, `uploadPath`, `keyFile`, `certFile` |
 | [examples/agent_client/](examples/agent_client/) | Agent client example | Demonstrates REST+WS agent workflow |
 
 ## Feature Requirements
@@ -80,9 +80,9 @@ graph LR
 |----|-------------|--------|
 | REQ-ES-020 | Bonjour/mDNS service advertisement as `_allspark._tcp` | [server.py#register_zeroconf](python/server.py) |
 | REQ-ES-021 | SSL/TLS support via configurable key/cert files for WSS/HTTPS | [server.py#init_app](python/server.py), [server.js](node/server.js) |
-| REQ-ES-022 | Shared `config.json` with deep-merge of user overrides and defaults | [config.json](config.json), [server.py#load_config](python/server.py) |
+| REQ-ES-022 | Shared `config.yaml` with deep-merge of user overrides and defaults | [config.yaml](config.yaml), [server.py#load_config](python/server.py) |
 | REQ-ES-023 | Dual implementation parity: Python (aiohttp) and Node.js | [python/](python/), [node/](node/) |
-| REQ-ES-025 | `communicationsPolicy` in `clientConfig` specifying per-protocol enable/disable for mobile devices | [config.json](config.json) |
+| REQ-ES-025 | `communicationsPolicy` in `clientConfig` specifying per-protocol enable/disable for mobile devices | [config.yaml](config.yaml) |
 
 ### Web Interface
 

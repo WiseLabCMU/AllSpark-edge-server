@@ -12,12 +12,12 @@ This document captures the core architectural choices and design patterns implem
 **Decision:** The control plane executes as a completely detached **Sidecar Process** (`python control_plane/main.py`) rather than being tightly integrated into the main `aiohttp` edge server (`server.py`).
 **Rationale:**
 - **Isolation of Concerns:** The primary Edge Server manages high-frequency WebSocket streams, large QUIC video blob uploads, and Bonjour service discovery. Keeping the UI rendering and polling decoupled ensures that an expensive UI redraw or long-running query doesn't block the asyncio event loop handling critical edge ingestion.
-- **Port Offset:** The sidecar automatically reads the Edge Server's configured port (e.g., `8080`) from `config.json` and binds itself to `port + 1` (e.g., `8081`), ensuring no port collisions while remaining predictable.
+- **Port Offset:** The sidecar automatically reads the Edge Server's configured port (e.g., `8080`) from `config.yaml` and binds itself to `port + 1` (e.g., `8081`), ensuring no port collisions while remaining predictable.
 
 ## 3. Single Source of Truth Configuration
-**Decision:** Both the Edge Server and the Sidecar UI read from a unified `config.json` in the root `edge_server/` directory.
+**Decision:** Both the Edge Server and the Sidecar UI read from a unified `config.yaml` in the root `edge_server/` directory.
 **Rationale:** 
-- **Bootstrapping:** Whichever service boots first (typically `server.py` or the `node` equivalent) checks for `config.json`. If it's missing, it dynamically generates it with internal defaults.
+- **Bootstrapping:** Whichever service boots first (typically `server.py` or the `node` equivalent) checks for `config.yaml`. If it's missing, it dynamically generates it with internal defaults.
 - **Synchronization:** The control plane reliably knows exactly where the `uploadPath` is located, what IP constraints exist, and what the base port is without duplicated environment variables.
 
 ## 4. Integration Strategies for Edge Data
@@ -30,7 +30,7 @@ We utilized three distinct strategies for populating the reactive UI, optimizing
 
 ### B. Shared File Mounts (Capture Browser)
 - **Method:** `os.path` and `glob` traversal to `app.add_media_files()`.
-- **Reasoning:** Instead of creating file transfer endpoints, the Sidecar reads the absolute system path defined in `config.json` (`uploads/orgs/default/...`). It dynamically builds UI cards based on what exists on disk in real-time, allowing native HTML5 `video` playback over HTTP immediately.
+- **Reasoning:** Instead of creating file transfer endpoints, the Sidecar reads the absolute system path defined in `config.yaml` (`uploads/orgs/default/...`). It dynamically builds UI cards based on what exists on disk in real-time, allowing native HTML5 `video` playback over HTTP immediately.
 
 ### C. Direct Broker Attachment (MQTT Anomalies)
 - **Method:** Background `paho-mqtt` thread processing wildcard topics (`#`).
@@ -53,7 +53,7 @@ While Phase 1 and 2 established the decoupled control plane, the following steps
    - Replace the `dummy_rerun_server.py` mock with the actual `rerun-sdk` data integration pipeline. This involves piping the live telemetry and `.quic` video streams directly into the native Rerun data plane for real-time 3D and spatial debugging.
 
 3. **Expanded Configuration & Data Discovery:**
-   - Extend the `config.json` schema to encompass a broader range of telemetry locations and application logs.
+   - Extend the `config.yaml` schema to encompass a broader range of telemetry locations and application logs.
    - Update `pages/capture.py` to ingest and parse these diverse logs globally, providing a centralized diagnostic view beyond just the MQTT streams and media uploads.
 
 4. **Agentic Framework Hookup:**

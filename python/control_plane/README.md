@@ -13,7 +13,7 @@ cd ../  # Navigate up to the python edge server root
 pip install -r requirements.txt
 ```
 
-> **Note**: The core edge server must run to generate the default `config.json` before the control plane can read the settings correctly.
+> **Note**: The core edge server must run to generate the default `config.yaml` before the control plane can read the settings correctly.
 
 ## Running the Servers (Order of Operations)
 
@@ -25,7 +25,7 @@ In your first terminal:
 cd allspark_agent/edge_server/python
 python server.py
 ```
-*You should see output indicating it is running on `http://0.0.0.0:8080` (and `wss://...`). If this is the first run, it will automatically generate a default `config.json` in the `edge_server/` root.*
+*You should see output indicating it is running on `http://0.0.0.0:8080` (and `wss://...`). If this is the first run, it will automatically generate a default `config.yaml` in the `edge_server/` root.*
 
 **Step 2. Run the Control Plane Sidecar**
 In a second terminal:
@@ -33,7 +33,7 @@ In a second terminal:
 cd allspark_agent/edge_server/python
 python control_plane/main.py
 ```
-*NiceGUI will automatically read your `config.json` and start the remote dashboard on `http://127.0.0.1:8081` (Edge Server Port + 1).*
+*NiceGUI will automatically read your `config.yaml` and start the remote dashboard on `http://127.0.0.1:8081` (Edge Server Port + 1).*
 
 **Step 3. (Optional) Run the Mock Rerun.io Viewer**
 To populate the `/rerun` visualization iframe in the control plane dashboard with dummy data until the true data plane is integrated, launch the rerun mock script in a third terminal:

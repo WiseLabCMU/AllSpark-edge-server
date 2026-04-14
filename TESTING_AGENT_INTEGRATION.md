@@ -34,7 +34,7 @@ mosquitto -d                    # run in background manually
 
 ```
 AllSpark-edge-server/
-├── config.json                      # ← agentConfig + agentResponsePath here
+├── config.yaml                      # ← agentConfig + agentResponsePath here
 ├── python/
 │   ├── server.py                    # aiohttp Edge Server (port 8080)
 │   ├── agent_service/               # Agent integration package
@@ -58,7 +58,7 @@ AllSpark-edge-server/
 
 ## Step 1 – Start the Agentic Framework
 
-The Edge Server calls `adk web` on `http://localhost:8000/run` (configurable in `config.json`).
+The Edge Server calls `adk web` on `http://localhost:8000/run` (configurable in `config.yaml`).
 
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/allspark-agentic-framework
@@ -98,7 +98,7 @@ http://localhost:8000/dev-ui/
 
 ## Step 2 – Configure the Edge Server
 
-Open `AllSpark-edge-server/config.json` and confirm / adjust the `agentConfig` block:
+Open `AllSpark-edge-server/config.yaml` and confirm / adjust the `agentConfig` block:
 
 ```json
 {
@@ -132,7 +132,7 @@ python server.py
 Expected startup output:
 
 ```
-Loaded config from .../config.json
+Loaded config from .../config.yaml
 Agent client initialised. Responses stored at: .../uploads/agent_responses/
 AnomalyResponseStore initialised at .../uploads/agent_responses/
 Server is running on http://0.0.0.0:8080
@@ -171,7 +171,7 @@ AllSpark  | Dashboard  Clients  Capture  Agent  Debug  Settings  👤 test-user
 |---|---|---|
 | **Agent** | `/agent` | Full-width response feed + "Continue Investigation" (embedded ADK viewer) |
 | **Debug** | `/debug` | Manual anomaly submission form (developer / test use) |
-| **Settings** | `/settings` | Edit `config.json` values |
+| **Settings** | `/settings` | Edit `config.yaml` values |
 
 ---
 
@@ -318,7 +318,7 @@ Inside the ADK dev-ui session you can:
 - Send follow-up messages to the agent
 - Inspect tool calls and intermediate reasoning steps
 
-The session URL includes the `user` parameter derived from `agent_user_id` in `config.json`.
+The session URL includes the `user` parameter derived from `agent_user_id` in `config.yaml`.
 
 ---
 
@@ -394,7 +394,7 @@ curl "http://localhost:8080/api/agent/responses?limit=5" | python3 -m json.tool
 
 ## ADK Session URL Format
 
-The control plane constructs the ADK dev-ui session URL using values from `config.json`:
+The control plane constructs the ADK dev-ui session URL using values from `config.yaml`:
 
 ```
 {agent_url stripped of /run}/dev-ui/?app={agent_app_name}&user={agent_user_id}&session={session_id}
@@ -415,9 +415,9 @@ which renders it in an iframe identical to the Rerun viewer page.
 | Symptom | Check |
 |---|---|
 | `503 Agent service not initialised` | Run `python server.py` from `AllSpark-edge-server/python/` |
-| `Session creation failed: HTTP 404` | `agent_app_name` in `config.json` doesn't match `adk web` |
+| `Session creation failed: HTTP 404` | `agent_app_name` in `config.yaml` doesn't match `adk web` |
 | `Connection refused` on agent URL | Start `adk web` first |
-| Agent times out | Increase `agent_timeout` in `config.json` (default 300 s) |
+| Agent times out | Increase `agent_timeout` in `config.yaml` (default 300 s) |
 | Dashboard shows "No agent responses yet" | Edge server not running or wrong port |
 | Dropdown shows "No anomalies found" | Submit a new anomaly via the Debug page |
 | "Continue Investigation" not shown | Response has no session ID – resubmit via Debug |

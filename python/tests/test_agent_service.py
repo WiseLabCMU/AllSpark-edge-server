@@ -442,7 +442,7 @@ class TestEdgeServerEndpoints:
     ------------------
     `server.load_config()` is called both at module level (via importlib.reload)
     and again inside `server.init_app()`.  Both calls re-initialise the global
-    `_agent_client` and `_response_store` singletons from the real config.json,
+    `_agent_client` and `_response_store` singletons from the real config.yaml,
     which means any mock we assign between those two calls gets overwritten.
 
     The fix: patch `server.load_config` to a no-op for the duration of each
@@ -464,7 +464,7 @@ class TestEdgeServerEndpoints:
 
         @asynccontextmanager
         async def _ctx():
-            # Patch load_config so it never touches the real config.json
+            # Patch load_config so it never touches the real config.yaml
             with patch.object(srv, "load_config", return_value=None):
                 # Inject test doubles
                 srv._agent_client = agent_client

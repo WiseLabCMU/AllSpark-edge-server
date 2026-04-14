@@ -16,7 +16,7 @@ def index():
     ui.navigate.to('/agent')
 
 if __name__ in {"__main__", "__mp_main__"}:
-    # Read port from config.json and start NiceGUI on config['port'] + 1 (default 8081).
+    # Read port from config.yaml and start NiceGUI on config['port'] + 1 (default 8081).
     full_config = settings.load_config()
     cp_config = full_config.get('control_plane', {})
     mc_config = full_config.get('mobile_client', {})

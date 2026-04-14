@@ -26,7 +26,7 @@ To test agentic processing of incoming videos, see the [Agent Client Example](ex
 
 ```
 AllSpark-edge-server/
-├── config.json         (Shared configuration)
+├── config.yaml         (Shared configuration)
 ├── index.html          (Shared web interface)
 ├── REQUIREMENTS.md     (Architecture & requirements)
 ├── docs/               (Protocol docs and images)
@@ -54,7 +54,7 @@ AllSpark-edge-server/
 
 ## Configuration
 
-Both servers read from `config.json` in the project root. Missing values are filled from defaults.
+Both servers read from `config.yaml` in the project root. Missing values are filled from defaults.
 
 > [!NOTE]
 > You can only run **one** server at a time if they share the same port (default: 8080).
@@ -123,7 +123,7 @@ The timestamp is auto-derived from the clip filename if `--anomaly-time` is omit
 
 ### Agent Response Storage Layout
 
-Responses are stored under `uploads/agent_responses/` (configurable via `agentResponsePath` in `config.json`):
+Responses are stored under `uploads/agent_responses/` (configurable via `agentResponsePath` in `config.yaml`):
 
 ```
 uploads/agent_responses/

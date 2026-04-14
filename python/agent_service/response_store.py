@@ -73,7 +73,7 @@ class AnomalyResponseStore:
         Args:
             response:     The AgentResponse to persist.
             request:      The originating AnomalyRequest (optional).
-            agent_config: The agentConfig dict from config.json, used to
+            agent_config: The agentConfig dict from config.yaml, used to
                           populate session_info.txt with real URLs/names.
                           Falls back to sensible defaults if None.
         """
