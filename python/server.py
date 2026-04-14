@@ -17,7 +17,7 @@ from agent_service import AgentApiClient, AnomalyResponseStore
 from agent_service.models import AnomalyRequest
 
 # Constants
-CONFIG_FILE = "../config.yaml"
+CONFIG_FILE = "config.yaml"
 DEFAULT_CONFIG = {
     "hostname": "0.0.0.0",
     "port": 8080,
