@@ -75,10 +75,8 @@ def create_page():
                     ui.input('Hostname').bind_value(config, 'hostname').classes('w-full')
                     ui.number('Port').bind_value(config, 'port').classes('w-full')
                     ui.input('Upload Path (Videos/Logs)').bind_value(config, 'uploadPath').classes('w-full')
+                    ui.input('Agent Response Path').bind_value(config, 'agentResponsePath').classes('w-full')
                     ui.number('Keep Alive Interval (ms)').bind_value(config, 'keepAliveIntervalMs').classes('w-full')
-                    with ui.row().classes('gap-4 mt-2'):
-                        ui.checkbox('Auto Upload Media').bind_value(config, 'autoUpload')
-                        ui.checkbox('Enable QUIC Server').bind_value(config, 'enableQuic')
 
                 # Security & Paths
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
@@ -101,6 +99,18 @@ def create_page():
             # Client Configs
             if 'clientConfig' not in config:
                 config['clientConfig'] = {}
+            if 'agentConfig' not in config:
+                config['agentConfig'] = {}
+
+            with ui.row().classes('w-full gap-6 mb-6'):
+                with ui.card().classes('w-full flex-1 min-w-[300px]'):
+                    ui.label('Agent Config').classes('text-lg font-bold mb-2 text-gray-700')
+                    ui.input('Agent URL').bind_value(config['agentConfig'], 'agent_url').classes('w-full')
+                    ui.input('Agent App Name').bind_value(config['agentConfig'], 'agent_app_name').classes('w-full')
+                    ui.input('Agent User ID').bind_value(config['agentConfig'], 'agent_user_id').classes('w-full')
+                    ui.input('Agent Session ID').bind_value(config['agentConfig'], 'agent_session_id').classes('w-full')
+                    ui.number('Agent Timeout (s)').bind_value(config['agentConfig'], 'agent_timeout').classes('w-full')
+                    ui.input('Agent Init Message').bind_value(config['agentConfig'], 'agent_init_message').classes('w-full')
 
             with ui.row().classes('w-full gap-6'):
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
