@@ -21,11 +21,10 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
         with ui.row().classes('items-center'):
             nav_items = [
                 ('Agent', '/agent', 'Agent'),
-                ('Anomalies', '/anomalies', 'Anomal'),
                 ('Clients', '/clients', 'Client'),
-                ('Logs', '/logs', 'Log'),
                 ('Rerun', '/rerun', 'Rerun'),
-                ('Settings', '/settings', 'Setting')
+                ('Settings', '/settings', 'Setting'),
+                ('Debug', '/debug', 'Debug')
             ]
             for title, route, kw in nav_items:
                 base_classes = 'no-underline mx-2 transition-colors px-2 py-1 rounded'

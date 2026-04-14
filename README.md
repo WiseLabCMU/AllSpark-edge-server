@@ -34,6 +34,15 @@ AllSpark-edge-server/
 ├── keys/               (SSL certificates)
 ├── third-party/        (Local frontend dependencies)
 ├── uploads/            (Upload directory, auto-created)
+│   └── agent_responses/  (Agent analysis results)
+│       └── Anomaly_YYYY-MM-DD/
+│           └── HHMMSS_<uuid>/
+│               ├── response.json         (Full AgentResponse as JSON)
+│               ├── summary.txt           (Human-readable text summary)
+│               ├── request.json          (Original AnomalyRequest as JSON)
+│               ├── session_info.txt      (ADK session lookup info)
+│               ├── video_clips/          (Video clip(s) for this anomaly)
+│               └── machine_anomaly_data/ (Machine/sensor anomaly data)
 ├── node/               (Node.js server implementation)
 └── python/             (Python server implementation)
 ```
@@ -92,6 +101,56 @@ node server.js
 
 ```bash
 websocat --insecure wss://localhost:8080
+```
+
+## Agent Service
+
+The edge server includes an agentic analysis pipeline that sends anomaly data (video clips, MQTT logs, sensor readings)
+to the [AllSpark Agentic Framework](../allspark-agentic-framework) for AI-powered root cause analysis.
+
+### Submitting an Anomaly for Analysis
+
+```bash
+cd python
+python tests/submit_anomaly_to_edge.py \
+    --clip-path /path/to/anomaly_clip_20260413_120000.mp4 \
+    --anomaly-time 2026-04-13T12:00:00 \
+    --error "missed expected message" \
+    --expected-topic allspark/anomaly_detected
+```
+
+The timestamp is auto-derived from the clip filename if `--anomaly-time` is omitted.
+
+### Agent Response Storage Layout
+
+Responses are stored under `uploads/agent_responses/` (configurable via `agentResponsePath` in `config.json`):
+
+```
+uploads/agent_responses/
+└── Anomaly_2026-04-13/
+    └── 120000_a3f9b2/
+        ├── response.json         ← full AgentResponse (raw agent output + metadata)
+        ├── summary.txt           ← human-readable text summary
+        ├── request.json          ← original AnomalyRequest sent to the agent
+        ├── session_info.txt      ← ADK session ID and web UI lookup instructions
+        ├── video_clips/          ← video clip(s) associated with this anomaly
+        └── machine_anomaly_data/ ← machine/sensor data files for this anomaly
+```
+
+### POST /api/agent/analyze
+
+```json
+{
+  "clip_path":           "anomaly_clip_20260413_120000.mp4",
+  "anomaly_time":        "2026-04-13T12:00:00",
+  "log_path":            "/path/to/mqtt_trace.log",
+  "clip_start_time":     "2026-04-13T11:59:30",
+  "error":               "missed expected message",
+  "expected_topic":      "allspark/anomaly_detected",
+  "mqtt_clip_messages":  [],
+  "video_storage_path":  "",
+  "extra_metadata":      {}
+}
 ```
 
 ## API Reference

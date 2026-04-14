@@ -4,8 +4,8 @@ import sys
 
 def main():
     root_dir = os.path.dirname(os.path.abspath(__file__))
-    mobile_server_script = os.path.join(root_dir, 'mobile_client', 'server.py')
-    control_plane_script = os.path.join(root_dir, 'control_plane', 'main.py')
+    mobile_server_script = os.path.join(root_dir, 'python', 'server.py')
+    control_plane_script = os.path.join(root_dir, 'python', 'control_plane', 'main.py')
     
     # Start mobile client server
     print("Starting mobile client server...")

@@ -4,10 +4,17 @@ import logging
 import os
 import socket
 import ssl
+import sys
 import time
 
 from aiohttp import WSMsgType, web
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
+
+# Allow imports from the sibling agent_service package regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agent_service import AgentApiClient, AnomalyResponseStore
+from agent_service.models import AnomalyRequest
 
 # Constants
 CONFIG_FILE = "../config.yaml"
@@ -17,8 +24,17 @@ DEFAULT_CONFIG = {
     "serviceName": "AllSpark Server",
     "keyFile": "keys/test-private.key",
     "certFile": "keys/test-public.crt",
-    "uploadPath": "logs/data/mobile-client",
+    "uploadPath": "uploads/",
+    "agentResponsePath": "uploads/agent_responses/",
     "keepAliveIntervalMs": 5000,
+    "agentConfig": {
+        "agent_url": "http://localhost:8000/run",
+        "agent_app_name": "allspark_agent",
+        "agent_user_id": "edge_server_user",
+        "agent_session_id": "edge_session",
+        "agent_timeout": 300,
+        "agent_init_message": "Hey, can you help me do some analysis?"
+    },
     "clientConfig": {
         "videoFormat": "mp4",
         "videoChunkDurationMs": 10000,
@@ -42,9 +58,14 @@ upload_states = {}
 client_connections = {}
 config = {}
 
+# Agent service singletons – initialised in load_config()
+_agent_client: AgentApiClient | None = None
+_response_store: AnomalyResponseStore | None = None
+
 def load_config():
-    global config
+    global config, _agent_client, _response_store
     config = DEFAULT_CONFIG.copy()
+    config["agentConfig"] = DEFAULT_CONFIG["agentConfig"].copy()
 
     # Load user config if exists
     config_path = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
@@ -78,6 +99,12 @@ def load_config():
             print(f"Failed to update config.yaml: {e}")
 
     print(f"Loaded config from {config_path}")
+
+    # Initialise agent singletons
+    _agent_client = AgentApiClient(config.get("agentConfig", {}))
+    response_path = resolve_path(config.get("agentResponsePath", "uploads/agent_responses/"))
+    _response_store = AnomalyResponseStore(response_path)
+    print(f"Agent client initialised. Responses stored at: {response_path}")
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -131,6 +158,226 @@ async def handle_status(request):
 
 async def handle_config(request):
     return web.json_response(config.get("clientConfig", {}))
+
+async def handle_agent_analyze(request):
+    """
+    POST /api/agent/analyze
+
+    Accepts anomaly metadata, calls the AllSpark Agentic Framework, stores
+    the response to disk, and returns the result as JSON.
+
+    Request body (JSON):
+        clip_path          (str, required)  – path to the anomaly video clip
+        log_path           (str, optional)  – path to an associated log file
+        anomaly_time       (str, required)  – ISO-8601 anomaly timestamp
+        clip_start_time    (str, optional)
+        clip_start_timestamp (str, optional)
+        error              (str, optional)
+        expected_topic     (str, optional)
+        mqtt_clip_messages (list, optional)
+        video_storage_path (str, optional)
+        extra_metadata     (dict, optional)
+    """
+    global _agent_client, _response_store
+
+    if _agent_client is None or _response_store is None:
+        return web.json_response(
+            {"success": False, "error": "Agent service not initialised"},
+            status=503,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid JSON request body"}, status=400
+        )
+
+    clip_path = body.get("clip_path", "")
+    anomaly_time = body.get("anomaly_time", "")
+
+    if not clip_path or not anomaly_time:
+        return web.json_response(
+            {"success": False, "error": "clip_path and anomaly_time are required"},
+            status=400,
+        )
+
+    anomaly_request = AnomalyRequest(
+        clip_path=clip_path,
+        log_path=body.get("log_path", ""),
+        anomaly_time=anomaly_time,
+        clip_start_time=body.get("clip_start_time", ""),
+        clip_start_timestamp=str(body.get("clip_start_timestamp", "")),
+        error=body.get("error", "N/A"),
+        expected_topic=body.get("expected_topic", "N/A"),
+        mqtt_clip_messages=body.get("mqtt_clip_messages", []),
+        video_storage_path=body.get("video_storage_path", ""),
+        extra_metadata=body.get("extra_metadata", {}),
+    )
+
+    print(f"[agent/analyze] Received request for clip: {clip_path}")
+
+    agent_response = await _agent_client.analyze_anomaly(anomaly_request)
+
+    stored_at = _response_store.save(
+        agent_response,
+        anomaly_request,
+        agent_config=config.get("agentConfig"),
+    )
+
+    print(
+        f"[agent/analyze] Analysis complete. Status={agent_response.status}. "
+        f"Stored at: {stored_at}"
+    )
+
+    return web.json_response(
+        {
+            "success": agent_response.is_success,
+            "request_id": agent_response.request_id,
+            "session_id": agent_response.session_id,
+            "status": agent_response.status,
+            "summary": agent_response.summary,
+            "stored_at": stored_at,
+            "error_message": agent_response.error_message,
+        }
+    )
+
+
+async def handle_agent_continue(request):
+    """
+    POST /api/agent/continue
+
+    Continue an investigation by sending a follow-up prompt to an existing
+    ADK session.  The session must have been created by a prior /api/agent/analyze
+    call; its session_id is stored in the AgentResponse.
+
+    Request body (JSON):
+        session_id    (str, required) – the ADK session to continue
+        prompt        (str, required) – the follow-up question / instruction
+        clip_path     (str, optional) – carried forward for attribution
+        anomaly_time  (str, optional) – carried forward for attribution
+    """
+    global _agent_client, _response_store
+
+    if _agent_client is None or _response_store is None:
+        return web.json_response(
+            {"success": False, "error": "Agent service not initialised"},
+            status=503,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid JSON request body"}, status=400
+        )
+
+    session_id = body.get("session_id", "").strip()
+    prompt = body.get("prompt", "").strip()
+
+    if not session_id or not prompt:
+        return web.json_response(
+            {"success": False, "error": "session_id and prompt are required"},
+            status=400,
+        )
+
+    clip_path = body.get("clip_path", "")
+    anomaly_time = body.get("anomaly_time", "")
+
+    print(f"[agent/continue] Continuing session {session_id} with prompt: {prompt[:80]}…")
+
+    agent_response = await _agent_client.continue_session(
+        session_id=session_id,
+        prompt=prompt,
+        clip_path=clip_path,
+        anomaly_time=anomaly_time,
+    )
+
+    stored_at = _response_store.save(
+        agent_response,
+        agent_config=config.get("agentConfig"),
+    )
+
+    print(
+        f"[agent/continue] Follow-up complete. Status={agent_response.status}. "
+        f"Stored at: {stored_at}"
+    )
+
+    return web.json_response(
+        {
+            "success": agent_response.is_success,
+            "request_id": agent_response.request_id,
+            "session_id": agent_response.session_id,
+            "status": agent_response.status,
+            "summary": agent_response.summary,
+            "stored_at": stored_at,
+            "error_message": agent_response.error_message,
+        }
+    )
+
+
+async def handle_agent_responses(request):
+    """
+    GET /api/agent/responses?limit=<n>
+
+    Returns a list of stored agent responses, newest first.
+    """
+    global _response_store
+
+    if _response_store is None:
+        return web.json_response(
+            {"success": False, "error": "Agent service not initialised"},
+            status=503,
+        )
+
+    try:
+        limit = int(request.rel_url.query.get("limit", 50))
+    except ValueError:
+        limit = 50
+
+    responses = _response_store.list_responses(limit=limit)
+    return web.json_response(
+        {
+            "success": True,
+            "count": len(responses),
+            "responses": [r.to_dict() for r in responses],
+        }
+    )
+
+
+async def handle_agent_response_detail(request):
+    """
+    GET /api/agent/responses/{stored_at_b64}
+
+    Returns a single stored AgentResponse by its stored_at path
+    (URL-safe base64 encoded).
+    """
+    import base64
+
+    global _response_store
+
+    if _response_store is None:
+        return web.json_response(
+            {"success": False, "error": "Agent service not initialised"},
+            status=503,
+        )
+
+    encoded = request.match_info.get("stored_at_b64", "")
+    try:
+        stored_at = base64.urlsafe_b64decode(encoded.encode()).decode()
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid stored_at encoding"}, status=400
+        )
+
+    response = _response_store.get_response(stored_at)
+    if response is None:
+        return web.json_response(
+            {"success": False, "error": "Response not found"}, status=404
+        )
+
+    return web.json_response({"success": True, "response": response.to_dict()})
+
 
 async def handle_command_post(request):
     connection_id = request.match_info.get('connection_id')
@@ -374,6 +621,10 @@ async def init_app():
     app.router.add_get('/api/status', handle_status)
     app.router.add_get('/api/config', handle_config)
     app.router.add_post('/api/command/{connection_id}', handle_command_post)
+    app.router.add_post('/api/agent/analyze', handle_agent_analyze)
+    app.router.add_post('/api/agent/continue', handle_agent_continue)
+    app.router.add_get('/api/agent/responses', handle_agent_responses)
+    app.router.add_get('/api/agent/responses/{stored_at_b64}', handle_agent_response_detail)
     app.router.add_static('/third-party', path=resolve_path("third-party"), name='third-party')
 
     # Actually wait, client connects to wss://host:port/. So root is correct for WS?
