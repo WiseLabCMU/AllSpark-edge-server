@@ -34,8 +34,8 @@ mosquitto -d                    # run in background manually
 
 ```
 AllSpark-edge-server/
-├── config.yaml                      # ← agentConfig + agentResponsePath here
 ├── python/
+│   ├── config.yaml                  # ← Unified config (mobile_client, control_plane, agentConfig)
 │   ├── server.py                    # aiohttp Edge Server (port 8080)
 │   ├── agent_service/               # Agent integration package
 │   │   ├── __init__.py
@@ -63,13 +63,13 @@ The Edge Server calls `adk web` on `http://localhost:8000/run` (configurable in 
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/allspark-agentic-framework
 
-# Activate the framework environment (conda or Poetry)
+# Activate the framework environment via Conda:
 conda activate allspark_agent_env
-# -- or --
-poetry shell
-
-# Start the ADK web server (default port 8000)
 adk web
+
+# -- or start it via Poetry --
+# (In Poetry 2.0+, 'poetry shell' is deprecated. Use 'poetry run' directly)
+poetry run adk web
 ```
 
 You should see:
@@ -98,7 +98,7 @@ http://localhost:8000/dev-ui/
 
 ## Step 2 – Configure the Edge Server
 
-Open `AllSpark-edge-server/config.yaml` and confirm / adjust the `agentConfig` block:
+Open `AllSpark-edge-server/python/config.yaml` and confirm / adjust the `agentConfig` block:
 
 ```json
 {
