@@ -21,10 +21,12 @@ CONFIG_FILE = "config.yaml"
 DEFAULT_CONFIG = {
     "hostname": "0.0.0.0",
     "port": 8080,
+    "autoUpload": True,
     "serviceName": "AllSpark Server",
     "keyFile": "keys/test-private.key",
     "certFile": "keys/test-public.crt",
     "uploadPath": "uploads/",
+    "clientUploadsPath": "uploads/mobile_clients/",
     "agentResponsePath": "uploads/agent_responses/",
     "keepAliveIntervalMs": 5000,
     "agentConfig": {
@@ -64,14 +66,15 @@ _response_store: AnomalyResponseStore | None = None
 
 def load_config():
     global config, _agent_client, _response_store
-    config = DEFAULT_CONFIG.copy()
-    config["agentConfig"] = DEFAULT_CONFIG["agentConfig"].copy()
+    import copy
+    config = copy.deepcopy(DEFAULT_CONFIG)
 
     # Load user config if exists
     config_path = os.path.join(os.path.dirname(__file__), CONFIG_FILE)
 
     full_config = {}
     needs_save = False
+    original_mc = {}
 
     if os.path.exists(config_path):
         try:
@@ -80,14 +83,24 @@ def load_config():
         except Exception as e:
             print(f"Failed to load config: {e}")
 
+    def _deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, dict) and k in d and isinstance(d[k], dict):
+                _deep_update(d[k], v)
+            else:
+                d[k] = v
+        return d
+
     if "mobile_client" in full_config:
-        mc_config = full_config["mobile_client"]
-        config.update(mc_config)
-        if "clientConfig" in mc_config and isinstance(mc_config["clientConfig"], dict):
-            config["clientConfig"].update(mc_config["clientConfig"])
+        original_mc = full_config["mobile_client"]
+        _deep_update(config, original_mc)
     else:
         print("mobile_client section missing in config.yaml. Generating it...")
-        full_config["mobile_client"] = DEFAULT_CONFIG
+        # config is already DEFAULT_CONFIG
+
+    if original_mc != config:
+        import copy
+        full_config["mobile_client"] = copy.deepcopy(config)
         needs_save = True
 
     if needs_save:
@@ -114,10 +127,7 @@ def resolve_path(path_str):
     return os.path.join(get_project_root(), path_str)
 
 async def handle_index(request):
-    index_path = os.path.join(os.path.dirname(__file__), "index.html")
-    if os.path.exists(index_path):
-        return web.FileResponse(index_path)
-    return web.Response(text="AllSpark Mobile Client Edge Server - API Active", status=200)
+    return web.Response(text="AllSpark Edge API Server - API Active", status=200)
 
 def get_local_ip():
     local_ip = "127.0.0.1"
@@ -514,7 +524,7 @@ async def websocket_handler(request):
                             media_type = "data"
 
                         # Prepare upload path
-                        base_upload_path = resolve_path(config["uploadPath"])
+                        base_upload_path = resolve_path(config.get("clientUploadsPath", "uploads/mobile_clients"))
                         target_dir = os.path.join(
                             base_upload_path,
                             date_str,
@@ -550,7 +560,7 @@ async def websocket_handler(request):
                     state["file_handle"].close()
 
                     filename = state["metadata"]["filename"]
-                    filepath = state.get("filepath", os.path.join(resolve_path(config["uploadPath"]), filename))
+                    filepath = state.get("filepath", os.path.join(resolve_path(config.get("clientUploadsPath", "uploads/mobile_clients")), filename))
                     filesize = len(msg.data)
 
                     state["lastFilename"] = filename

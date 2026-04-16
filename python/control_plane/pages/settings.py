@@ -26,18 +26,33 @@ def load_config():
                 full_config = yaml.safe_load(f) or {}
     except Exception as e:
         ui.notify(f'Error loading config: {e}', type='negative')
-        
-    if 'control_plane' not in full_config:
-        full_config['control_plane'] = DEFAULT_CP_CONFIG
+
+    import copy
+    cp_config = copy.deepcopy(DEFAULT_CP_CONFIG)
+    original_cp = full_config.get('control_plane', {})
+
+    def _deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, dict) and k in d and isinstance(d[k], dict):
+                _deep_update(d[k], v)
+            else:
+                d[k] = v
+        return d
+
+    _deep_update(cp_config, original_cp)
+
+    if original_cp != cp_config:
+        import copy
+        full_config['control_plane'] = copy.deepcopy(cp_config)
         needs_save = True
-        
+
     if needs_save:
         try:
             with open(CONFIG_PATH, 'w') as f:
                 yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
         except Exception:
             pass
-            
+
     return full_config
 
 def save_config(config_data):
@@ -55,7 +70,7 @@ def create_page():
         full_config = load_config()
         if 'mobile_client' not in full_config:
             full_config['mobile_client'] = {}
-            
+
         config = full_config['mobile_client']
         cp_config = full_config['control_plane']
 
@@ -74,16 +89,18 @@ def create_page():
                     ui.input('Service Name').bind_value(config, 'serviceName').classes('w-full')
                     ui.input('Hostname').bind_value(config, 'hostname').classes('w-full')
                     ui.number('Port').bind_value(config, 'port').classes('w-full')
-                    ui.input('Upload Path (Videos/Logs)').bind_value(config, 'uploadPath').classes('w-full')
+                    ui.input('Legacy Upload Path').bind_value(config, 'uploadPath').classes('w-full')
+                    ui.input('Client Uploads Path').bind_value(config, 'clientUploadsPath').classes('w-full')
                     ui.input('Agent Response Path').bind_value(config, 'agentResponsePath').classes('w-full')
                     ui.number('Keep Alive Interval (ms)').bind_value(config, 'keepAliveIntervalMs').classes('w-full')
+                    ui.checkbox('Auto Request Client Uploads').bind_value(config, 'autoUpload')
 
                 # Security & Paths
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
                     ui.label('Security Paths').classes('text-lg font-bold mb-2')
                     ui.input('Key File Path').bind_value(config, 'keyFile').classes('w-full')
                     ui.input('Cert File Path').bind_value(config, 'certFile').classes('w-full')
-                    
+
                 # Control Plane Settings
                 if 'logPaths' not in cp_config:
                     cp_config['logPaths'] = {}
@@ -122,7 +139,7 @@ def create_page():
                 # Comms Policy
                 if 'communicationsPolicy' not in config['clientConfig']:
                     config['clientConfig']['communicationsPolicy'] = {}
-                
+
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
                     ui.label('Communications Policy').classes('text-lg font-bold mb-4 text-gray-700')
                     with ui.row().classes('gap-6 flex-wrap w-full'):

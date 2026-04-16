@@ -25,7 +25,7 @@ if __name__ in {"__main__", "__mp_main__"}:
     sidecar_port = cp_config.get('port', edge_port + 1)
 
     # Mount the dynamic video storage directory for browser playback
-    upload_path = mc_config.get('uploadPath', 'logs/data/mobile-client')
+    upload_path = mc_config.get('clientUploadsPath', 'uploads/mobile_clients')
     abs_upload_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', upload_path))
     os.makedirs(abs_upload_path, exist_ok=True)
     app.add_media_files('/videos', abs_upload_path)
