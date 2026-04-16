@@ -2,41 +2,67 @@
 
 This server provides HTTP and WebSocket endpoints for AllSpark video capture, upload, and remote command execution.
 
-> [!IMPORTANT]
-> The AllSpark system consists of this edge server and the [AllSpark iOS App](https://github.com/WiseLabCMU/AllSpark-iOS). For compatibility reasons, please ensure that you run release versions of both repositories that share at least the same minor semantic version tag (e.g., `v0.3.x` of the server with `v0.3.x` of the iOS app).
-
 For detailed architecture diagrams, feature requirements, and source file index, see **[REQUIREMENTS.md](REQUIREMENTS.md)**.
 
 See also: **[CHANGELOG.md](CHANGELOG.md)**
 
-## Quick Start (Python)
+## Setup With Agents
+
+Full stack setup (Agents/Data-Capture/Mobile) setup:
+- [AllSpark Agentic Framework](https://github.boschdevcloud.com/Reliable-Distributed-Systems/allspark-agentic-framework)
+- [AllSpark Rerun Data Plane Dashboard]()
+- AllSpark Edge Server APIs (**this repo**)
+- AllSpark Control Plane GUI Dashbaord (**this repo**)
+- [AllSpark Mobile App](https://github.com/WiseLabCMU/AllSpark-iOS)
+
+Follow the [Testing Agentic Integration](TESTING_AGENT_INTEGRATION.md) setup documementation.
+
+## Setup Standalone - NO Agents
+
+Short stack setup (Mobile) setup:
+- AllSpark Edge Server APIs (**this repo**)
+- AllSpark Control Plane GUI Dashbaord (**this repo**)
+- [AllSpark Mobile App](https://github.com/WiseLabCMU/AllSpark-iOS)
 
 ```bash
-cd python
+# Start the API daemon
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python server.py
+pip install -r python/requirements.txt
+
+# Start the API Daeman and Control Plane dashboard
+python main.py
 ```
 
-Then open [http://localhost:8080](http://localhost:8080) to view the web control interface. [Node.js](docs/node_quickstart.md) is also supported.
-
-To test agentic processing of incoming videos, see the [Agent Client Example](examples/agent_client/README.md).
+Then open the Control Plane dashboard at [http://localhost:8081](http://localhost:8081).
 
 ## Directory Structure
 
 ```
 AllSpark-edge-server/
 ├── python/
-│   ├── config.yaml     (Shared configuration)
-│   ├── server.py       (Python edge server)
-│   └── control_plane/  (NiceGUI sidecar framework)
-├── index.html          (Shared web interface)
-├── REQUIREMENTS.md     (Architecture & requirements)
+│   ├── config.yaml                  # ← Unified config (mobile_client, control_plane, agentConfig)
+│   ├── server.py                    # aiohttp Edge Server (port 8080)
+│   ├── agent_service/               # Agent integration package
+│   │   ├── __init__.py
+│   │   ├── models.py                # AnomalyRequest / AgentResponse dataclasses
+│   │   ├── client.py                # AgentApiClient – analyze_anomaly + continue_session
+│   │   └── response_store.py        # AnomalyResponseStore (file-system persistence)
+│   ├── control_plane/
+│   │   ├── main.py                  # NiceGUI Control Plane (port 8081)
+│   │   ├── theme.py                 # Header nav: Agent · Clients · Rerun · Settings· Debug
+│   │   └── pages/
+│   │       ├── agent.py             # Primary investigation UI (two-column, Open in ADK)
+│   │       └── debug.py             # Manual Trigger form (developer / test use)
+│   └── tests/
+│       ├── test_agent_service.py    # Unit + async integration tests
+│       ├── submit_anomaly_to_edge.py # CLI tool – new anomaly submission
+│       └── e2e_agent_workflow.py    # CLI smoke-test against a running server├── REQUIREMENTS.md     (Architecture & requirements)
 ├── docs/               (Protocol docs and images)
 ├── examples/           (Example clients and scripts)
 ├── keys/               (SSL certificates)
 ├── third-party/        (Local frontend dependencies)
-├── uploads/            (Upload directory, auto-created)
+├── uploads/            (Upload directory root, auto-created)
+│   ├── mobile_clients/   (Default destination for mobile app uploads)
 │   └── agent_responses/  (Agent analysis results)
 │       └── Anomaly_YYYY-MM-DD/
 │           └── HHMMSS_<uuid>/
@@ -46,23 +72,18 @@ AllSpark-edge-server/
 │               ├── session_info.txt      (ADK session lookup info)
 │               ├── video_clips/          (Video clip(s) for this anomaly)
 │               └── machine_anomaly_data/ (Machine/sensor anomaly data)
-├── node/               (Node.js server implementation)
-└── python/             (Python server implementation)
 ```
 
 ## Prerequisites
 
-- Python 3 **or** Node.js
+- Python 3
 - OpenSSL (for generating test certificates)
 
 ## Configuration
 
-Both servers read from `python/config.yaml` in the `python/` directory. Missing values are filled from defaults.
+Both servers read from `python/config.yaml`. Missing values are filled from defaults.
 
-> [!NOTE]
-> You can only run **one** server at a time if they share the same port (default: 8080).
-
-![AllSpark Edge Server Architecture](docs/architecture.png)
+For detailed architecture, refer to the [System Context diagram in REQUIREMENTS.md](REQUIREMENTS.md#system-context).
 
 ## SSL Certificates
 
@@ -81,35 +102,10 @@ openssl req \
     -out keys/test-public.crt
 ```
 
-## Running the Servers
-
-### Python Server
-
-```bash
-cd python
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python server.py
-```
-
-### Node.js Server
-
-```bash
-cd node
-npm install
-node server.js
-```
-
-### Quick WebSocket Test
-
-```bash
-websocat --insecure wss://localhost:8080
-```
-
 ## Agent Service
 
 The edge server includes an agentic analysis pipeline that sends anomaly data (video clips, MQTT logs, sensor readings)
-to the [AllSpark Agentic Framework](../allspark-agentic-framework) for AI-powered root cause analysis.
+to the [AllSpark Agentic Framework](https://github.boschdevcloud.com/Reliable-Distributed-Systems/allspark-agentic-framework) for AI-powered root cause analysis.
 
 ### Submitting an Anomaly for Analysis
 
@@ -140,31 +136,31 @@ uploads/agent_responses/
         └── machine_anomaly_data/ ← machine/sensor data files for this anomaly
 ```
 
-### POST /api/agent/analyze
-
-```json
-{
-  "clip_path":           "anomaly_clip_20260413_120000.mp4",
-  "anomaly_time":        "2026-04-13T12:00:00",
-  "log_path":            "/path/to/mqtt_trace.log",
-  "clip_start_time":     "2026-04-13T11:59:30",
-  "error":               "missed expected message",
-  "expected_topic":      "allspark/anomaly_detected",
-  "mqtt_clip_messages":  [],
-  "video_storage_path":  "",
-  "extra_metadata":      {}
-}
-```
-
 ## API Reference
 
-See [docs/endpoints.md](docs/endpoints.md) for the full REST API and WebSocket protocol.
+See **[docs/endpoints.md](docs/endpoints.md)** for the full REST API definitions, WebSocket message protocols, and Agentic Framework routing schemas.
 
 ## Web Interface
 
-The control interface at `http://localhost:8080` shows active connections and provides time-range upload controls.
+The control interface at `http://localhost:8081` shows active connections, agent responses, and allows launching investigations in the ADK.
 
-![AllSpark Edge Server Web Interface](docs/server-page.png)
+### Header Navigation
+
+| Link | URL | Purpose |
+|---|---|---|
+| **Status** | | Online/Offline status for each service: ADK, Rerun, Edge, Client |
+| **Agent** | `/agent` | Full-width response feed + "Continue Investigation" (embedded ADK viewer) |
+| **Clients** | `/clients` | Live websocket connection monitoring and mobile upload requests |
+| **Rerun** | `/rerun` | 3D data plane scrubber and visualization via Rerun.io |
+| **Settings** | `/settings` | Dynamic UI bound directly to the active `config.yaml` state |
+| **Debug** | `/debug` | Manual anomaly submission form (developer / test use) |
+| **👤 test-user** | | Placeholder for future account management |
+
+Example Agent Page:
+![Agent Page UI](docs/agent-page.png)
+
+Example Clients Page:
+![Client Page UI](docs/client-page.png)
 
 ## Known Limitations
 

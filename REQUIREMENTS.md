@@ -6,13 +6,35 @@
 
 ```mermaid
 graph LR
-    subgraph perceptor["AllSpark Perceptor Computer"]
-        server["AllSpark Edge Server<br/>(Python / Node.js)"]
-        agent["Agent Client<br/>(Autonomous Controller)"]
-        storage[("Video Storage<br/>(uploads/)")]
-        server -->|stores files| storage
-        agent -->|REST commands| server
-        agent <-->|WS events<br/>e.g. chunkSaved| server
+    subgraph perceptor["AllSpark Perceptor Computer (Edge)"]
+        mqtt{{"Mosquitto MQTT<br/>Broker (1883)"}}
+        
+        subgraph edge_stack["AllSpark Edge Software"]
+            server["Edge API Server<br/>(Port 8080)"]
+            cplane["Control Plane GUI<br/>(Port 8081)"]
+        end
+        
+        adk["AllSpark Agentic Framework<br/>(ADK - Port 8000)"]
+        rerun["Rerun Data Plane<br/>(Port 9090)"]
+        
+        subgraph storage["Local Storage (uploads/)"]
+            mobile_storage[("Mobile Clients")]
+            agent_storage[("Agent Responses")]
+        end
+
+        %% Internal Edge flows
+        server -->|stores video| mobile_storage
+        server -->|stores results| agent_storage
+        server -->|"POST /run (anomaly)"| adk
+        adk -.->|"JSON response"| server
+        
+        %% Control Plane polling and reading
+        cplane -.->|pulls /api/status| server
+        cplane -->|triggers /api/agent/analyze| server
+        cplane -->|reads state & files| storage
+        mqtt -.->|anomaly events| cplane
+        cplane -.->|embeds session UI| adk
+        cplane -.->|embeds 3D UI| rerun
     end
 
     subgraph discovery["Local Network Discovery"]
@@ -21,35 +43,34 @@ graph LR
     end
 
     server -.->|advertises| mdns
-    server -.->|encodes address| qr
+    cplane -.->|generates| qr
 
-    subgraph clients["Edge Clients"]
+    subgraph clients["Remote Data Sources"]
         ios["AllSpark iOS Client"]
-        rpi["Raspberry Pi Client<br/>(future)"]:::future
-        nano["Nvidia Nano Client<br/>(future)"]:::future
+        machines["Sensors / ROS / PLCs"]
     end
 
     ios -.->|discovers| mdns
     ios -.->|scans| qr
-    ios ==>|HTTP + WS/WSS| server
-    rpi -..->|"WS (planned)"| server
-    nano -..->|"WS (planned)"| server
-    server -..->|"QUIC (future)"| ios
-    server -..->|"QUIC (future)"| rpi
-    server -..->|"QUIC (future)"| nano
+    ios -->|"HTTP + WSS (Video Data)"| server
+    ios -.->|"telemetry stream"| rerun
+    machines -.->|publishes metrics| mqtt
+    ios -.->|publishes events| mqtt
 
     classDef future stroke-dasharray: 5 5
 ```
 
 ## Source File Index
 
-| File | Role | Key Symbols |
-|------|------|-------------|
-| [python/server.py](python/server.py) | Python server (aiohttp) | `websocket_handler`, `handle_command_post`, `handle_status`, `handle_health`, `register_zeroconf`, `init_app` |
-| [node/server.js](node/server.js) | Node.js server | `requestHandler`, `wss.on("connection")`, `deepMerge`, `getLocalIP` |
-| [index.html](index.html) | Web control interface | `updateHealthStatus`, `updateConnectionStatus`, `sendUploadTimeRangeCommand` |
-| [python/config.yaml](python/config.yaml) | Shared configuration | `hostname`, `port`, `clientConfig`, `uploadPath`, `keyFile`, `certFile` |
-| [examples/agent_client/](examples/agent_client/) | Agent client example | Demonstrates REST+WS agent workflow |
+| File / Module | Role | Core Responsibility |
+|-------------|------|-------------------|
+| [`python/server.py`](python/server.py) | Edge API Server | `aiohttp` runner, WSS chunk parsing, `/api/` routers |
+| [`python/agent_service/`](python/agent_service/) | AI Framework Link | `AgentApiClient`, `AnomalyResponseStore`, analysis payload generation |
+| [`python/control_plane/main.py`](python/control_plane/main.py) | Control Plane Host | `ui.run` sidecar spinup, fastAPI static mounting |
+| [`python/control_plane/theme.py`](python/control_plane/theme.py) | Nav & Health Polling | Background header rendering, 5-second asynchronous TCP pings |
+| [`python/control_plane/pages/`](python/control_plane/pages/) | UI Routing Views | Independent GUI layout pages (`agent`, `clients`, `settings`, `debug`) |
+| [`python/config.yaml`](python/config.yaml) | Shared Settings DB | Deep-merged configuration defining network interfaces and vault paths |
+| [`TESTING_AGENT_INTEGRATION.md`](TESTING_AGENT_INTEGRATION.md) | Agent Test Guide | CLI smoke-test automation and developer integration workflows |
 
 ## Feature Requirements
 
@@ -57,10 +78,14 @@ graph LR
 
 | ID | Requirement | Source |
 |----|-------------|--------|
-| REQ-ES-001 | `GET /` serves `index.html` web interface | [server.py#handle_index](python/server.py), [server.js#requestHandler](node/server.js) |
-| REQ-ES-002 | `GET /api/health` returns `{ status, timestamp, uptime }` | [server.py#handle_health](python/server.py) |
-| REQ-ES-003 | `GET /api/status` returns connection list with `id`, `clientName`, `filename`, `receivedData` | [server.py#handle_status](python/server.py) |
-| REQ-ES-004 | `POST /api/command/{connectionId}` dispatches commands (`uploadTimeRange`, `record`) to a connected client | [server.py#handle_command_post](python/server.py) |
+| REQ-ES-001 | Control Plane UI hosted as detached sidecar on `base_port + 1` | [control_plane/main.py](python/control_plane/main.py) |
+| REQ-ES-002 | `GET /api/health` returns `{ status, uptime, protocols, port }` | [server.py](python/server.py) |
+| REQ-ES-003 | `GET /api/status` returns connection list with `id`, `clientName`, and last transfer metrics | [server.py](python/server.py) |
+| REQ-ES-004 | `GET /api/config` returns dynamic mobile client policies and video boundaries | [server.py](python/server.py) |
+| REQ-ES-005 | `POST /api/command/{connectionId}` dispatches commands (`uploadTimeRange`, `record`) | [server.py](python/server.py) |
+| REQ-ES-006 | `POST /api/agent/analyze` aggregates anomalies and submits to AllSpark ADK | [server.py](python/server.py) |
+| REQ-ES-007 | `POST /api/agent/continue` routes a follow-up string prompt to an existing ADK session | [server.py](python/server.py) |
+| REQ-ES-008 | `GET /api/agent/responses` lists chronological agent interactions persisted on disk | [server.py](python/server.py) |
 
 ### WebSocket Protocol
 
@@ -88,10 +113,24 @@ graph LR
 
 | ID | Requirement | Source |
 |----|-------------|--------|
-| REQ-ES-030 | Active connections list with client names, IDs, upload status | [index.html#updateConnectionStatus](index.html) |
-| REQ-ES-031 | Health status display with uptime and protocol badge | [index.html#updateHealthStatus](index.html) |
-| REQ-ES-032 | Request Upload Time Range controls with quick presets and persistence | [index.html#sendUploadTimeRangeCommand](index.html) |
-| REQ-ES-033 | QR code display encoding server address for mobile pairing | [index.html](index.html) |
+| REQ-ES-030 | Header navigation bar renders universal API polling status for all core services | [theme.py](python/control_plane/theme.py) |
+| REQ-ES-031 | `/agent` renders the stored response feed and the interactive ADK `iframe` session viewer | [pages/agent.py](python/control_plane/pages/agent.py) |
+| REQ-ES-032 | `/clients` displays live WS connections and provides the manual "Request Upload Range" triggers | [pages/clients.py](python/control_plane/pages/clients.py) |
+| REQ-ES-033 | `/settings` allows two-way reactive binding and deep-merging to the underlying `config.yaml` | [pages/settings.py](python/control_plane/pages/settings.py) |
+| REQ-ES-034 | `/debug` exposes developer JSON scaffolding capabilities for manual anomaly injection | [pages/debug.py](python/control_plane/pages/debug.py) |
+
+## Control Plane Architecture Decisions
+
+The detached NiceGUI control plane operates under the following design constraints:
+
+1. **Framework Selection (Python-Native):** Utilizing [NiceGUI](https://nicegui.io/) allows the frontend and backend logic to reside purely in Python, ensuring reactive data binding without context-switching to isolated JS SPA frameworks.
+2. **The Sidecar Pattern:** Executed as a completely detached process on a port offset (`base_port + 1`) to guarantee that heavy UI rendering, DOM patching, and data iteration do not accidentally block the core Edge Server's critical `aiohttp` event loop running QUIC and WS streams.
+3. **Single Source of Truth:** The sidecar UI natively reads the unified `python/config.yaml`.
+4. **Data Integration Strategies:**
+   - **REST Polling:** Actively polls the `/api/status` endpoint to pull mobile rig connection states without establishing complex inter-process bridges.
+   - **Shared File Mounts:** Points `app.add_media_files()` dynamically at the configured `uploads/` directory to serve video playback via raw OS filesystem traversal rather than internal data transfers.
+   - **Direct Broker Attachment:** Instantiates a dedicated background thread for `paho-mqtt` to intercept and sink anomalies directly from port `1883`, preventing Edge Server bottlenecking.
+   - **Rerun.io Wrapper:** Uses an `iframe` boundary to dynamically embed the `rerun-sdk` native Rust 3D visualizations inside the standard Python dashboard view.
 
 ## Upload Sequence
 
@@ -118,5 +157,6 @@ sequenceDiagram
 
 - **QUIC transport** for high-bandwidth binary video/depth pulls
 - **Raspberry Pi** and **Nvidia Nano** edge clients
-- Secure transport (WSS/HTTPS) is easy to configure; clients try secure before insecure
-- UWB/NFC/Satellite enforcement in `communicationsPolicy` (pending public iOS API or cross-platform clients)
+- Native integration of the Control Plane sidecar into the main Edge Server application layer, unifying the footprint once performance limits are fully mapped
+- Replacing the Rerun.io `iframe` mocking with a fully bound `rerun-sdk` live data ingestion pipeline from the mobile edge clients
+- Implementation of comprehensive SSL/JWT context guards between the isolated dashboard services

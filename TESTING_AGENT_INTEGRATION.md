@@ -18,7 +18,7 @@ This guide walks you through the complete workflow:
 | Python | ≥ 3.11 |
 | conda (or Poetry) | any recent |
 | Mosquitto MQTT broker | any |
-| pytest + pytest-asyncio | installed via `requirements.txt` |
+| pytest + pytest-asyncio | installed via `python/requirements.txt` |
 
 Make sure Mosquitto is running locally on port 1883 (used by the dashboard's MQTT listener):
 
@@ -32,33 +32,13 @@ mosquitto -d                    # run in background manually
 
 ## Repository Layout (Edge Server)
 
-```
-AllSpark-edge-server/
-├── python/
-│   ├── config.yaml                  # ← Unified config (mobile_client, control_plane, agentConfig)
-│   ├── server.py                    # aiohttp Edge Server (port 8080)
-│   ├── agent_service/               # Agent integration package
-│   │   ├── __init__.py
-│   │   ├── models.py                # AnomalyRequest / AgentResponse dataclasses
-│   │   ├── client.py                # AgentApiClient – analyze_anomaly + continue_session
-│   │   └── response_store.py        # AnomalyResponseStore (file-system persistence)
-│   ├── control_plane/
-│   │   ├── main.py                  # NiceGUI Control Plane (port 8081)
-│   │   ├── theme.py                 # Header nav: Dashboard · Clients · Capture · Agent · Debug · Settings
-│   │   └── pages/
-│   │       ├── agent.py             # Primary investigation UI (two-column, Open in ADK)
-│   │       └── debug.py             # Manual Trigger form (developer / test use)
-│   └── tests/
-│       ├── test_agent_service.py    # Unit + async integration tests
-│       ├── submit_anomaly_to_edge.py # CLI tool – new anomaly submission
-│       └── e2e_agent_workflow.py    # CLI smoke-test against a running server
-```
+For the complete file-system tree map encompassing Python backend services, NiceGUI control plane modules, testing pipelines, and default configurations, see the **[Directory Structure](README.md#directory-structure)** in the primary repository documentation.
 
 ---
 
 ## Step 1 – Start the Agentic Framework
 
-The Edge Server calls `adk web` on `http://localhost:8000/run` (configurable in `config.yaml`).
+The Edge Server calls `adk web` on `http://localhost:8000/run` (configurable in `python/config.yaml`).
 
 ```bash
 cd /Users/bos2pi/git/Bosch-Github/allspark-agentic-framework
@@ -163,15 +143,7 @@ http://localhost:8081/agent
 
 ### Header navigation
 
-```
-AllSpark  | Dashboard  Clients  Capture  Agent  Debug  Settings  👤 test-user
-```
-
-| Page | URL | Purpose |
-|---|---|---|
-| **Agent** | `/agent` | Full-width response feed + "Continue Investigation" (embedded ADK viewer) |
-| **Debug** | `/debug` | Manual anomaly submission form (developer / test use) |
-| **Settings** | `/settings` | Edit `config.yaml` values |
+For detailed explanations of the routing parameters exposed by the Control Plane, refer to the **[Web Interface](README.md#web-interface)** documentation in the primary README.
 
 ---
 
@@ -318,7 +290,7 @@ Inside the ADK dev-ui session you can:
 - Send follow-up messages to the agent
 - Inspect tool calls and intermediate reasoning steps
 
-The session URL includes the `user` parameter derived from `agent_user_id` in `config.yaml`.
+The session URL includes the `user` parameter derived from `agent_user_id` in `python/config.yaml`.
 
 ---
 
@@ -369,32 +341,15 @@ curl "http://localhost:8080/api/agent/responses?limit=5" | python3 -m json.tool
 
 ## API Reference
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `POST` | `/api/agent/analyze` | Start a **new** anomaly analysis (new ADK session) |
-| `POST` | `/api/agent/continue` | Send follow-up to an **existing** ADK session |
-| `GET` | `/api/agent/responses?limit=N` | List stored responses, newest first |
-| `GET` | `/api/agent/responses/{stored_at_b64}` | Retrieve a single response by path |
+See the full [API endpoints schema](docs/endpoints.md) describing all HTTP endpoints, agentic framework integration routes, and WebSocket message protocols has been extracted.
 
-### `/api/agent/analyze` request body
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `clip_path` | `str` | ✅ | Plain basename – no directory prefix |
-| `anomaly_time` | `str` | ✅ | ISO-8601 timestamp |
-| `clip_start_time` | `str` | | ISO-8601 clip start |
-| `log_path` | `str` | | Path to MQTT/log file |
-| `error` | `str` | | Error label |
-| `expected_topic` | `str` | | Expected MQTT topic |
-| `mqtt_clip_messages` | `list` | | MQTT message dicts |
-| `video_storage_path` | `str` | | Root video chunk path |
-| `extra_metadata` | `dict` | | Forwarded verbatim to agent |
+- Note the  [`/api/agent/analyze`](docs/endpoints.md#post-apiagentanalyze) request body format.
 
 ---
 
 ## ADK Session URL Format
 
-The control plane constructs the ADK dev-ui session URL using values from `config.yaml`:
+The control plane constructs the ADK dev-ui session URL using values from `/python/config.yaml`:
 
 ```
 {agent_url stripped of /run}/dev-ui/?app={agent_app_name}&user={agent_user_id}&session={session_id}
@@ -415,9 +370,9 @@ which renders it in an iframe identical to the Rerun viewer page.
 | Symptom | Check |
 |---|---|
 | `503 Agent service not initialised` | Run `python server.py` from `AllSpark-edge-server/python/` |
-| `Session creation failed: HTTP 404` | `agent_app_name` in `config.yaml` doesn't match `adk web` |
+| `Session creation failed: HTTP 404` | `agent_app_name` in `python/config.yaml` doesn't match `adk web` |
 | `Connection refused` on agent URL | Start `adk web` first |
-| Agent times out | Increase `agent_timeout` in `config.yaml` (default 300 s) |
+| Agent times out | Increase `agent_timeout` in `python/config.yaml` (default 300 s) |
 | Dashboard shows "No agent responses yet" | Edge server not running or wrong port |
 | Dropdown shows "No anomalies found" | Submit a new anomaly via the Debug page |
 | "Continue Investigation" not shown | Response has no session ID – resubmit via Debug |
@@ -462,4 +417,3 @@ curl "http://localhost:8080/api/agent/responses?limit=5"
 # 9. Run E2E smoke test
 cd AllSpark-edge-server/python && python tests/e2e_agent_workflow.py --port 8080
 ```
-

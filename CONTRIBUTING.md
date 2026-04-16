@@ -6,8 +6,8 @@ This document covers **development rules and conventions** specific to `AllSpark
 
 ### 1. Unified Configuration (YAML)
 
-All operational settings must be stored in `config.yaml`.
-- **No JSON:** The server has been refactored away from legacy JSON configurations. Do not write or rely on `.json` settings files.
+All operational settings must be stored in `python/config.yaml`.
+- **No local JSON:** The local server has been refactored away from legacy JSON configurations. Do not write or rely on `.json` settings files, prefer `.yaml` format locally. JSON formatting is still used for send/recieve to/from mobile clients.
 - **Namespaces:** Configurations must be split into two explicit namespaces: `mobile_client` (for device telemetry and synchronization endpoints) and `control_plane` (web dashboard and dashboard dependencies).
 - **Auto-generation:** The server must automatically handle fallback implementations and auto-generate any missing safe default configuration schemas upon launch.
 
@@ -18,7 +18,7 @@ All operational settings must be stored in `config.yaml`.
 
 ### 3. File-System Signals
 
-For anomaly event generation and signaling, do not deploy heavyweight MQTT brokers on the edge infrastructure unless absolutely required by other external systems. Utilize local native directory-watching mechanisms for tracking events and system logs.
+For anomaly event monitoring and signaling utilize local native directory-watching mechanisms from the Control Plane GUI for tracking events and system logs.
 
 ### 4. Dependencies — Pin All Versions
 
@@ -29,4 +29,4 @@ For anomaly event generation and signaling, do not deploy heavyweight MQTT broke
 - Enforce proper Python styling guides (`flake8` / `black` when applicable).
 - Keep requirements updated using frozen `requirements.txt`.
 
-The `allspark-agents` repository (including this Edge Server subproject) uses [Release Please](https://github.com/googleapis/release-please) to automate CHANGELOG generation and semantic versioning. Your PR titles *must* follow Conventional Commit standards (e.g., `feat:`, `fix:`, `chore:`).
+The `allspark-edge-server` repository uses [Release Please](https://github.com/googleapis/release-please) to automate CHANGELOG generation and semantic versioning. Your PR titles *must* follow Conventional Commit standards (e.g., `feat:`, `fix:`, `chore:`).

@@ -9,5 +9,5 @@ This directory contains the protocol specifications, APIs, and architectural des
 | [distmon.md](distmon.md) | Exploratory architecture document focusing on distributed camera rig capture, privacy filtering, and secure device enrollment. |
 
 ### Assets
-*   `architecture.png` / `architecture.puml`: High-level system diagram source files.
-*   `server-page.png`: Screenshot of the current web UI.
+*   `agent-page.png`: Screenshot of the control plane Agent page.
+*   `client-page.png`: Screenshot of the control plane Client page.
