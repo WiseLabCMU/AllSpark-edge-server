@@ -502,6 +502,8 @@ async def websocket_handler(request):
                             name_without_ext = os.path.splitext(filename)[0]
                             parts = name_without_ext.split('_')
                             parsed_ts = float(parts[-1])
+                            if parsed_ts > 9999999999: # If it's in milliseconds (13 digits) instead of seconds (10 digits)
+                                parsed_ts /= 1000.0
                             timestamp_sec = parsed_ts
                         except Exception:
                             pass
