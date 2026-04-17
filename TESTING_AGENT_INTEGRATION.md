@@ -341,9 +341,9 @@ curl "http://localhost:8080/api/agent/responses?limit=5" | python3 -m json.tool
 
 ## API Reference
 
-See the full [API endpoints schema](docs/endpoints.md) describing all HTTP endpoints, agentic framework integration routes, and WebSocket message protocols has been extracted.
+See the full [API endpoints schema](docs/endpoints.md) describing all HTTP endpoints, agentic framework integration routes, and WebSocket message protocols.
 
-- Note the  [`/api/agent/analyze`](docs/endpoints.md#post-apiagentanalyze) request body format.
+- Note the [`/api/agent/analyze`](docs/endpoints.md#post-apiagentanalyze) request body format.
 
 ---
 

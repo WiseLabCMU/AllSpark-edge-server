@@ -8,20 +8,20 @@ See also: **[CHANGELOG.md](CHANGELOG.md)**
 
 ## Setup With Agents
 
-Full stack setup (Agents/Data-Capture/Mobile) setup:
+Full stack setup (Agents/Data-Capture/Mobile):
 - [AllSpark Agentic Framework](https://github.boschdevcloud.com/Reliable-Distributed-Systems/allspark-agentic-framework)
 - [AllSpark Rerun Data Plane Dashboard]()
 - AllSpark Edge Server APIs (**this repo**)
-- AllSpark Control Plane GUI Dashbaord (**this repo**)
+- AllSpark Control Plane GUI Dashboard (**this repo**)
 - [AllSpark Mobile App](https://github.com/WiseLabCMU/AllSpark-iOS)
 
-Follow the [Testing Agentic Integration](TESTING_AGENT_INTEGRATION.md) setup documementation.
+Follow the [Testing Agentic Integration](TESTING_AGENT_INTEGRATION.md) setup documentation.
 
 ## Setup Standalone - NO Agents
 
-Short stack setup (Mobile) setup:
+Short stack setup (Mobile):
 - AllSpark Edge Server APIs (**this repo**)
-- AllSpark Control Plane GUI Dashbaord (**this repo**)
+- AllSpark Control Plane GUI Dashboard (**this repo**)
 - [AllSpark Mobile App](https://github.com/WiseLabCMU/AllSpark-iOS)
 
 ```bash
@@ -29,7 +29,7 @@ Short stack setup (Mobile) setup:
 python3 -m venv venv && source venv/bin/activate
 pip install -r python/requirements.txt
 
-# Start the API Daeman and Control Plane dashboard
+# Start the API Daemon and Control Plane dashboard
 python main.py
 ```
 
@@ -56,22 +56,23 @@ AllSpark-edge-server/
 │   └── tests/
 │       ├── test_agent_service.py    # Unit + async integration tests
 │       ├── submit_anomaly_to_edge.py # CLI tool – new anomaly submission
-│       └── e2e_agent_workflow.py    # CLI smoke-test against a running server├── REQUIREMENTS.md     (Architecture & requirements)
-├── docs/               (Protocol docs and images)
-├── examples/           (Example clients and scripts)
-├── keys/               (SSL certificates)
-├── third-party/        (Local frontend dependencies)
-├── uploads/            (Upload directory root, auto-created)
-│   ├── mobile_clients/   (Default destination for mobile app uploads)
-│   └── agent_responses/  (Agent analysis results)
+│       └── e2e_agent_workflow.py    # CLI smoke-test against a running server
+├── REQUIREMENTS.md                  # Architecture & requirements
+├── docs/                            # Protocol docs and images
+├── examples/                        # Example clients and scripts
+├── keys/                            # SSL certificates
+├── third-party/                     # Local frontend dependencies
+├── uploads/                         # Upload directory root, auto-created
+│   ├── mobile_clients/              # Default destination for mobile app uploads
+│   └── agent_responses/             # Agent analysis results
 │       └── Anomaly_YYYY-MM-DD/
 │           └── HHMMSS_<uuid>/
-│               ├── response.json         (Full AgentResponse as JSON)
-│               ├── summary.txt           (Human-readable text summary)
-│               ├── request.json          (Original AnomalyRequest as JSON)
-│               ├── session_info.txt      (ADK session lookup info)
-│               ├── video_clips/          (Video clip(s) for this anomaly)
-│               └── machine_anomaly_data/ (Machine/sensor anomaly data)
+│               ├── response.json         # Full AgentResponse as JSON
+│               ├── summary.txt           # Human-readable text summary
+│               ├── request.json          # Original AnomalyRequest as JSON
+│               ├── session_info.txt      # ADK session lookup info
+│               ├── video_clips/          # Video clip(s) for this anomaly
+│               └── machine_anomaly_data/ # Machine/sensor anomaly data
 ```
 
 ## Prerequisites

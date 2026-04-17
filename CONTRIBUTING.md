@@ -7,18 +7,18 @@ This document covers **development rules and conventions** specific to `AllSpark
 ### 1. Unified Configuration (YAML)
 
 All operational settings must be stored in `python/config.yaml`.
-- **No local JSON:** The local server has been refactored away from legacy JSON configurations. Do not write or rely on `.json` settings files, prefer `.yaml` format locally. JSON formatting is still used for send/recieve to/from mobile clients.
+- **No local JSON:** The local server has been refactored away from legacy JSON configurations. Do not write or rely on `.json` settings files, prefer `.yaml` format locally. JSON formatting is still used for send/receive to/from mobile clients.
 - **Namespaces:** Configurations must be split into two explicit namespaces: `mobile_client` (for device telemetry and synchronization endpoints) and `control_plane` (web dashboard and dashboard dependencies).
 - **Auto-generation:** The server must automatically handle fallback implementations and auto-generate any missing safe default configuration schemas upon launch.
 
 ### 2. Architecture & UI
 
-- **Python First:** The server backend and GUI are python based. Do not use legacy Node.js workflows.
+- **Python First:** The server backend and GUI are Python-based. Do not use legacy Node.js workflows.
 - **NiceGUI Control Plane:** The Edge server control plane is built using [NiceGUI](https://nicegui.io/). Routing is natively managed by decorators (e.g. `@ui.page('/route')`). When creating pages, add a call inside the main process to initialize them dynamically.
 
 ### 3. File-System Signals
 
-For anomaly event monitoring and signaling utilize local native directory-watching mechanisms from the Control Plane GUI for tracking events and system logs.
+For anomaly event monitoring and signaling, utilize local native directory-watching mechanisms within the Control Plane GUI for tracking events and system logs.
 
 ### 4. Dependencies — Pin All Versions
 
