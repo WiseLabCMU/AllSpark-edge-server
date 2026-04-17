@@ -226,3 +226,6 @@ keys/
 # User configuration files
 config.json
 config.yaml
+
+# NiceGUI storage
+.nicegui/

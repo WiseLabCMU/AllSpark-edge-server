@@ -89,7 +89,7 @@ def create_page():
                     ui.input('Service Name').bind_value(config, 'serviceName').classes('w-full')
                     ui.input('Hostname').bind_value(config, 'hostname').classes('w-full')
                     ui.number('Port').bind_value(config, 'port').classes('w-full')
-                    ui.input('Legacy Upload Path').bind_value(config, 'uploadPath').classes('w-full')
+                    ui.input('Legacy Upload Path').bind_value(config, 'uploadPath').classes('w-full').props('hint="Superseded by Client Uploads Path"')
                     ui.input('Client Uploads Path').bind_value(config, 'clientUploadsPath').classes('w-full')
                     ui.input('Agent Response Path').bind_value(config, 'agentResponsePath').classes('w-full')
                     ui.number('Keep Alive Interval (ms)').bind_value(config, 'keepAliveIntervalMs').classes('w-full')
@@ -110,7 +110,7 @@ def create_page():
                     ui.input('Storage Secret').bind_value(cp_config, 'storageSecret').props('type=password').classes('w-full')
                     ui.input('Rerun Host').bind_value(cp_config, 'rerunHost').classes('w-full')
                     ui.number('Rerun Port').bind_value(cp_config, 'rerunPort').classes('w-full')
-                    ui.input('Anomaly Logs Path').bind_value(cp_config['logPaths'], 'anomalyLogs').classes('w-full')
+                    ui.input('Legacy Anomaly Logs Path').bind_value(cp_config['logPaths'], 'anomalyLogs').classes('w-full').props('hint="Superseded by Agent Response Path"')
                     ui.input('Rig Logs Path').bind_value(cp_config['logPaths'], 'rigLogs').classes('w-full')
 
             # Client Configs
