@@ -112,6 +112,7 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
             nav_items = [
                 ('Agent', '/agent', 'Agent'),
                 ('Clients', '/clients', 'Client'),
+                ('Logs', '/logs', 'Log'),
                 ('Rerun', '/rerun', 'Rerun'),
                 ('Settings', '/settings', 'Setting'),
                 ('Debug', '/debug', 'Debug')

@@ -2,7 +2,7 @@ from nicegui import app, ui
 import os
 
 # Import all pages to register their routes
-from pages import clients, agent, rerun_view, settings, debug
+from pages import clients, agent, rerun_view, settings, debug, logs
 
 # Initialize pages
 clients.create_page()
@@ -10,6 +10,7 @@ agent.create_page()
 rerun_view.create_page()
 settings.create_page()
 debug.create_page()
+logs.create_page()
 
 @ui.page('/')
 def index():
