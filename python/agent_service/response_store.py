@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Default ADK web URL used in session_info.txt when no config is supplied
 _DEFAULT_ADK_URL = "http://localhost:8000"
 _DEFAULT_APP_NAME = "allspark_agent"
-_DEFAULT_USER_ID = "edge_server_user"
+_DEFAULT_USER_ID = "user"
 
 
 class AnomalyResponseStore:

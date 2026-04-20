@@ -34,20 +34,22 @@ class AgentApiClient:
     {
         "agent_url":        "http://host:port/run",
         "agent_app_name":   "allspark_agent",
-        "agent_user_id":    "edge_server_user",
+        "agent_user_id":    "user",
         "agent_session_id": "edge_session_001",   # used as a base; unique id appended per request
         "agent_timeout":    300,
         "agent_init_message": "Hey, can you help me do some analysis?"
     }
     """
 
-    # Session creation URL template: POST /apps/{app}/users/{uid}/sessions/{sid}
-    _SESSION_PATH_TPL = "/apps/{app}/users/{uid}/sessions/{sid}"
+    # Session creation URL (newer API): POST /apps/{app}/users/{uid}/sessions
+    _SESSION_PATH_TPL = "/apps/{app}/users/{uid}/sessions"
+    # Legacy per-ID endpoint (deprecated by ADK but used for lookups)
+    _SESSION_ID_PATH_TPL = "/apps/{app}/users/{uid}/sessions/{sid}"
 
     def __init__(self, config: Dict[str, Any]) -> None:
         self._agent_url: str = config.get("agent_url", "http://localhost:8000/run")
         self._app_name: str = config.get("agent_app_name", "allspark_agent")
-        self._user_id: str = config.get("agent_user_id", "edge_server_user")
+        self._user_id: str = config.get("agent_user_id", "user")
         self._base_session_id: str = config.get("agent_session_id", "edge_session")
         self._timeout: int = int(config.get("agent_timeout", 300))
         self._init_message: str = config.get(
@@ -65,22 +67,20 @@ class AgentApiClient:
         Create a dedicated session, initialise it, then send the anomaly
         analysis request.  Returns an AgentResponse populated with the result.
         """
-        # Give each anomaly its own session so conversations don't bleed over.
         safe_ts = re.sub(r"[^a-zA-Z0-9_\-]", "_", request.anomaly_time)[:32]
-        session_id = f"{self._base_session_id}_{safe_ts}_{uuid.uuid4().hex[:6]}"
         request_id = f"{safe_ts}_{uuid.uuid4().hex[:6]}"
 
         timeout = aiohttp.ClientTimeout(total=self._timeout)
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            # 1. Create session
-            created, err = await self._create_session(session, session_id)
-            if not created:
+            # 1. Create session – let ADK generate the session ID
+            session_id, err = await self._create_session(session)
+            if not session_id:
                 return AgentResponse(
                     request_id=request_id,
                     clip_path=request.clip_path,
                     anomaly_time=request.anomaly_time,
-                    session_id=session_id,
+                    session_id="",
                     status="error",
                     error_message=f"Session creation failed: {err}",
                 )
@@ -125,9 +125,6 @@ class AgentApiClient:
         *session_id*) without creating a new one.  This implements the
         "investigate further" flow from the dashboard's Investigate tab.
 
-        The session is re-registered via POST (409 → already exists → safe to
-        continue), then the user's prompt is forwarded directly.
-
         Args:
             session_id:   The ADK session ID that was created during the
                           original analysis (stored in AgentResponse.session_id).
@@ -142,9 +139,9 @@ class AgentApiClient:
         timeout = aiohttp.ClientTimeout(total=self._timeout)
 
         async with aiohttp.ClientSession(timeout=timeout) as http_session:
-            # Re-register the session (409 = already exists = fine)
-            created, err = await self._create_session(http_session, session_id)
-            if not created:
+            # Verify the session still exists
+            exists, err = await self._verify_session_exists(http_session, session_id)
+            if not exists:
                 return AgentResponse(
                     request_id=request_id,
                     clip_path=clip_path,
@@ -182,30 +179,55 @@ class AgentApiClient:
     # ------------------------------------------------------------------
 
     async def _create_session(
-        self, session: aiohttp.ClientSession, session_id: str
-    ) -> Tuple[bool, str]:
+        self, session: aiohttp.ClientSession
+    ) -> Tuple[str, str]:
+        """Create a new ADK session, letting the server assign the ID.
+
+        Returns:
+            (session_id, error_message) – session_id is empty on failure.
+        """
         url = (
             self._base_url
             + self._SESSION_PATH_TPL.format(
-                app=self._app_name, uid=self._user_id, sid=session_id
+                app=self._app_name, uid=self._user_id
             )
         )
         try:
             async with session.post(
-                url, headers={"Content-Type": "application/json"}
+                url,
+                headers={"Content-Type": "application/json"},
+                json={},
             ) as resp:
                 if resp.status in (200, 201):
-                    logger.info("Agent session created: %s", session_id)
-                    return True, ""
-                if resp.status == 409:
-                    logger.info("Agent session already exists, reusing: %s", session_id)
-                    return True, ""
+                    data = await resp.json(content_type=None)
+                    sid = data.get("id", "")
+                    logger.info("Agent session created (ADK-assigned): %s", sid)
+                    return sid, ""
                 body = await resp.text()
                 msg = f"HTTP {resp.status}: {body}"
                 logger.error("Failed to create agent session: %s", msg)
-                return False, msg
+                return "", msg
         except Exception as exc:
             logger.error("Exception creating agent session: %s", exc)
+            return "", str(exc)
+
+    async def _verify_session_exists(
+        self, session: aiohttp.ClientSession, session_id: str
+    ) -> Tuple[bool, str]:
+        """Check that an existing session is reachable via GET."""
+        url = (
+            self._base_url
+            + self._SESSION_ID_PATH_TPL.format(
+                app=self._app_name, uid=self._user_id, sid=session_id
+            )
+        )
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    return True, ""
+                body = await resp.text()
+                return False, f"HTTP {resp.status}: {body}"
+        except Exception as exc:
             return False, str(exc)
 
     async def _initialise_session(

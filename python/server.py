@@ -32,7 +32,7 @@ DEFAULT_CONFIG = {
     "agentConfig": {
         "agent_url": "http://localhost:8000/run",
         "agent_app_name": "allspark_agent",
-        "agent_user_id": "edge_server_user",
+        "agent_user_id": "user",
         "agent_session_id": "edge_session",
         "agent_timeout": 300,
         "agent_init_message": "Hey, can you help me do some analysis?"

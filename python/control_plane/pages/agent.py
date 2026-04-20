@@ -64,7 +64,6 @@ class AnomalyOption:
         adk_url = (
             f"{self.adk_base_url}/dev-ui/"
             f"?app={self.app_name}"
-            f"&user={self.user_id}"
             f"&session={self.session_id}"
         )
         return f"/agent/session?adk_url={quote(adk_url, safe='')}"
@@ -169,7 +168,7 @@ def create_page() -> None:
         raw_agent_url: str = agent_cfg.get("agent_url", "http://localhost:8000/run")
         adk_base_url: str = re.sub(r"/run$", "", raw_agent_url.rstrip("/"))
         adk_app_name: str = agent_cfg.get("agent_app_name", "allspark_agent")
-        adk_user_id: str = agent_cfg.get("agent_user_id", "edge_server_user")
+        adk_user_id: str = agent_cfg.get("agent_user_id", "user")
 
         with menu("Agentic Framework Control"):
 

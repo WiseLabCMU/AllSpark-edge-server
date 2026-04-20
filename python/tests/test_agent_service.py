@@ -86,7 +86,7 @@ def agent_config() -> dict:
     return {
         "agent_url": "http://localhost:8000/run",
         "agent_app_name": "allspark_agent",
-        "agent_user_id": "edge_server_user",
+        "agent_user_id": "user",
         "agent_session_id": "edge_session",
         "agent_timeout": 30,
         "agent_init_message": "Hey!",
@@ -356,8 +356,8 @@ class TestAgentApiClientAsync:
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        # Session creation → 201
-        create_resp = _make_mock_response(201, {})
+        # Session creation → 200 with ADK-assigned session ID
+        create_resp = _make_mock_response(200, {"id": "adk-generated-session-id"})
         # Init message → 200 with empty list
         init_resp = _make_mock_response(200, [])
         # Analysis message → 200 with proper response
