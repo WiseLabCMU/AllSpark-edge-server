@@ -1,5 +1,9 @@
 # AllSpark Edge Server
 
+![Mobile Demo](docs/allspark-mobile-demo.gif)
+
+[1080p HD Demo](docs/allspark-mobile-demo-1080p.mp4)
+
 This server provides HTTP and WebSocket endpoints for AllSpark video capture, upload, and remote command execution.
 
 For detailed architecture diagrams, feature requirements, and source file index, see **[REQUIREMENTS.md](REQUIREMENTS.md)**.
