@@ -1,6 +1,37 @@
 # Changelog
 
 
+## [0.5.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.4.0...v0.5.0) (2026-04-21)
+
+
+### Features
+
+* **agent_service:** implement agent integration with anomaly analysis and response storage ([d0c3bf7](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/d0c3bf7c553288d23440d964eddd87cc29a32422))
+* **agent:** update user ID to 'user' and adjust session creation logic for ADK compatibility ([c74d62e](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c74d62eaaf9f8486a34b7aa199c5de04a90141ee))
+* **control_plane:** modernize edge UI, harden config loading, and optimize polling ([7d98836](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/7d9883639b180707e9a79776bba0aad243908993))
+* **control-plane:** reorganzied using yaml, parallel servers ([d625f20](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/d625f20cabbfe11216d4bd2c04e3768ca2941dfa))
+* **debug:** add manual anomaly trigger page for testing and development ([9106145](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/91061450d42ebf60704bcddae083651b27d723bb))
+* implement file watcher and reviewer ([a511764](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/a511764e2be93eda83a508300bbfbc114ba1af72))
+* load sidecar old server on separate port ([9c9a387](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/9c9a387b5f493f864240add5b01f5c84ffa0b3e4))
+* **logs:** add manual investigations to anomalies ([65b2ef8](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/65b2ef83e81720e8b76f936b3f029cd3a364a750))
+* **nicegui:** add control plane dashboard in py-rich nicegui ([c457251](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c457251aae6d2d95bb3ddd94a48fd08800068767))
+* **nicegui:** add settings editing integration ([f097b19](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/f097b19ddd6b38361dc71148b4f6a6c42ab4a118))
+* restore /logs filter/preview ([1f5df65](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/1f5df655fbfd61760d5e5024860fe0f058423d38))
+
+
+### Bug Fixes
+
+* consolidate split configuration into unified python/config.yaml ([34a07ec](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/34a07ecb0b7227dcfc57550793a1673312ca793b))
+* **control:** restore old mobile index ([c2928d8](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c2928d8f24d1f749efdd2768fecf4b2d3b52ecf8))
+* edge server api should self-detect its protocol ([32d8554](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/32d855416b45482a8661a993873b8ef83236d5b3))
+* export rerun/secret to config ([defe9c5](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/defe9c5abf905651be91979704b3c7940b46120b))
+* migrate to config.yaml, remove redundant files ([2147b80](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/2147b80c4e0856be665c20da961c10a2b4c69688))
+* Parse ms scale timestamps accurately preventing year out-of-range crash ([e4cc103](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/e4cc1037aca392136603d7cff02428b3065dbaf3))
+* **python:** add bootstrap config.json if missing ([2b4cc1b](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/2b4cc1b73a1ff6c4692e68377a94d00268dd7b63))
+* show active tab, slight reroder ([fea2946](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/fea29462718504351b40f537d330845b9551f9d4))
+* update release please to latest ([c58466a](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/c58466ab5fc511da8d1d0fa9859411b7142f4c22))
+* update settings with full config.yaml ([86b2c73](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/86b2c73897b49a6a329d5ae7fcad1292d45577d4))
+
 ## [0.4.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.3.0...v0.4.0) (2026-03-10)
 
 
