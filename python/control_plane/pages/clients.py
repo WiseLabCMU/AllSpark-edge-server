@@ -3,17 +3,16 @@ import aiohttp
 import asyncio
 import json
 from theme import menu, get_local_ip
-from pages.settings import load_config
+from pages.settings import load_config, get_edge_base_url
 
 def create_page():
-    config = load_config()
-    edge_port = config.get('mobile_client', {}).get('port', 8080)
+    edge_base_url = get_edge_base_url()
 
     @ui.page('/clients')
     def clients_page():
         with menu('Mobile Client Connections'):
             ip = get_local_ip()
-            server_url = f"ws://{ip}:{edge_port}"
+            server_url = f"ws://{ip}:8080"
 
             with ui.row().classes('w-full gap-8'):
                 with ui.card().classes('items-center p-6 w-1/3'):
@@ -36,8 +35,8 @@ def create_page():
                     async def fetch_and_render_clients():
                         import datetime
                         try:
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(f'http://127.0.0.1:{edge_port}/api/status', timeout=2) as resp:
+                            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                                async with session.get(f'{edge_base_url}/api/status', timeout=2) as resp:
                                     if resp.status == 200:
                                         data = await resp.json()
                                         clients_list = data.get('connections', [])
@@ -93,8 +92,8 @@ def create_page():
 
                             payload = {"command": "uploadTimeRange", "startTime": s_ts, "endTime": e_ts}
                             
-                            async with aiohttp.ClientSession() as session:
-                                async with session.post(f'http://127.0.0.1:{edge_port}/api/command/{client_id}', json=payload) as resp:
+                            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                                async with session.post(f'{edge_base_url}/api/command/{client_id}', json=payload) as resp:
                                     if resp.status == 200:
                                         ui.notify(f'Upload requested for {client_id[:4]}', type='positive')
                                     else:

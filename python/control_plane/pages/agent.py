@@ -30,7 +30,7 @@ import aiohttp
 from nicegui import ui
 
 from theme import menu
-from pages.settings import load_config
+from pages.settings import load_config, get_edge_base_url
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -160,8 +160,7 @@ def create_page() -> None:
     @ui.page("/agent")
     async def agent_page() -> None:
         config = load_config()
-        edge_port = config.get("port", 8080)
-        base_url = f"http://127.0.0.1:{edge_port}"
+        edge_base_url = get_edge_base_url()
 
         # Derive ADK coordinates from config
         agent_cfg: Dict[str, Any] = config.get("agentConfig", {})
@@ -291,9 +290,9 @@ def create_page() -> None:
 
             async def _refresh_responses() -> None:
                 try:
-                    async with aiohttp.ClientSession() as http:
+                    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as http:
                         async with http.get(
-                            f"{base_url}/api/agent/responses",
+                            f"{edge_base_url}/api/agent/responses",
                             params={"limit": "30"},
                             timeout=aiohttp.ClientTimeout(total=10),
                         ) as resp:

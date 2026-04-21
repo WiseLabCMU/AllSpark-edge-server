@@ -26,7 +26,7 @@ import aiohttp
 from nicegui import ui
 
 from theme import menu
-from pages.settings import load_config
+from pages.settings import load_config, get_edge_base_url
 
 
 # ---------------------------------------------------------------------------
@@ -53,9 +53,7 @@ def create_page() -> None:
 
     @ui.page("/debug")
     async def debug_page() -> None:
-        config = load_config()
-        edge_port = config.get("port", 8080)
-        base_url = f"http://127.0.0.1:{edge_port}"
+        edge_base_url = get_edge_base_url()
 
         # Derive the ADK dev-ui base URL from the agent_url in config
         import re as _re
@@ -189,7 +187,7 @@ def create_page() -> None:
                     try:
                         async with aiohttp.ClientSession() as http:
                             async with http.post(
-                                f"{base_url}/api/agent/analyze",
+                                f"{edge_base_url}/api/agent/analyze",
                                 json=payload,
                                 timeout=aiohttp.ClientTimeout(total=360),
                             ) as resp:

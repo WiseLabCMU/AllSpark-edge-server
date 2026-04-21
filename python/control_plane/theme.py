@@ -16,10 +16,11 @@ def get_local_ip():
 
 @contextlib.contextmanager
 def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
-    from pages.settings import load_config
+    from pages.settings import load_config, get_edge_base_url
     config = load_config()
     mc_cfg = config.get('mobile_client', {})
     edge_port = mc_cfg.get('port', 8080)
+    edge_base_url = get_edge_base_url()
     agent_url = mc_cfg.get('agentConfig', {}).get('agent_url', 'http://localhost:8000/run')
 
     cp_cfg = config.get('control_plane', {})
@@ -55,10 +56,10 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                     agent_p_port = parsed_agent.port or (443 if parsed_agent.scheme == 'https' else 80)
                     agent_p_scheme = parsed_agent.scheme or 'http'
 
-                    async with aiohttp.ClientSession() as session:
+                    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
                         # 1. Edge API HTTP & WS Checks
                         try:
-                            async with session.get(f'http://127.0.0.1:{edge_port}/api/health', timeout=2) as resp:
+                            async with session.get(f'{edge_base_url}/api/health', timeout=2) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
                                     protocols = data.get('protocols', ['ws'])
@@ -76,7 +77,7 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                                     raise Exception("Health check failed")
                         except Exception:
                             edge_status.classes(replace='px-2 py-0.5 bg-red-600 rounded text-white text-xs font-bold cursor-help')
-                            edge_tt.set_text(f"Edge Server API Offline at http://127.0.0.1:{edge_port}")
+                            edge_tt.set_text(f"Edge Server API Offline at {edge_base_url}")
                             client_status.classes(replace='px-2 py-0.5 bg-red-600 rounded text-white text-xs font-bold cursor-help')
                             client_tt.set_text(f"Mobile Client API Offline at ws://127.0.0.1:{edge_port}")
 

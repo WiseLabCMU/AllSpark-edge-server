@@ -16,6 +16,28 @@ DEFAULT_CP_CONFIG = {
         "rigLogs": "logs/data/datacapture-rig"
     }
 }
+def get_edge_base_url() -> str:
+    full_config = {}
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, 'r') as f:
+                full_config = yaml.safe_load(f) or {}
+    except Exception:
+        pass
+    
+    mc_cfg = full_config.get('mobile_client', {})
+    port = mc_cfg.get("port", 8080)
+    host = mc_cfg.get("hostname", "127.0.0.1")
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    key_path = os.path.join(base_dir, mc_cfg.get("keyFile", "keys/test-private.key"))
+    cert_path = os.path.join(base_dir, mc_cfg.get("certFile", "keys/test-public.crt"))
+    
+    if os.path.exists(key_path) and os.path.exists(cert_path):
+        return f"https://{host}:{port}"
+    return f"http://{host}:{port}"
 
 def load_config():
     needs_save = False

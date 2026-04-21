@@ -3,7 +3,7 @@ import os
 import time
 from pathlib import Path
 from theme import menu
-from pages.settings import load_config
+from pages.settings import load_config, get_edge_base_url
 
 def get_log_paths():
     full_config = load_config()
@@ -238,9 +238,7 @@ def create_page():
                 def submit_anomaly(error_val, expected_top, clip_time, anom_time):
                     import aiohttp
                     import shutil
-                    config = load_config()
-                    edge_port = config.get("mobile_client", {}).get("port", 8080)
-                    base_url = f"http://127.0.0.1:{edge_port}"
+                    edge_base_url = get_edge_base_url()
 
                     video_clips_dir = os.path.join(new_inv_path, 'video_clips')
                     machine_data_dir = os.path.join(new_inv_path, 'machine_anomaly_data')
@@ -273,8 +271,8 @@ def create_page():
 
                     async def do_post():
                         try:
-                            async with aiohttp.ClientSession() as http:
-                                async with http.post(f"{base_url}/api/agent/analyze", json=payload, timeout=aiohttp.ClientTimeout(total=360)) as resp:
+                            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as http:
+                                async with http.post(f"{edge_base_url}/api/agent/analyze", json=payload, timeout=aiohttp.ClientTimeout(total=360)) as resp:
                                     res = await resp.json(content_type=None)
                             if res.get("success"):
                                 ui.notify(f"Investigation submitted. ID: {res.get('request_id')} - Check Agent page.", type="positive", timeout=5000)
