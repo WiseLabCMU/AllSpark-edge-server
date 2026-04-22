@@ -65,17 +65,58 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 _PYTHON_DIR = Path(__file__).parent.parent
 
-# Absolute path to the agent's video data folder.
-# VideoDataLoader scans ONLY this directory. The clip must exist here so that
-# video_file_path.endswith(basename) matches when the tool resolves user_video_file.
-_AGENT_VIDEO_DATA_FOLDER = str(
-    Path(__file__).parent.parent.parent.parent
-    / "allspark-agentic-framework"
-    / "allspark_agent"
-    / "sample_data"
-    / "cesar"
-    / "camera-video"
+# Absolute path to the agentic framework repo root.
+_AGENT_FRAMEWORK_ROOT = (
+    Path(__file__).parent.parent.parent.parent / "allspark-agentic-framework"
 )
+
+
+def _resolve_agent_video_data_folder() -> str:
+    """
+    Read the agentic framework's active config to determine the correct
+    video data folder.  Falls back to cesar/camera-video if the config
+    cannot be parsed.
+    """
+    fallback = str(_AGENT_FRAMEWORK_ROOT / "allspark_agent" / "sample_data" / "cesar" / "camera-video")
+
+    try:
+        import yaml  # PyYAML
+    except ImportError:
+        # If PyYAML not available, try a simple text parse
+        pass
+
+    config_path = _AGENT_FRAMEWORK_ROOT / "allspark_agent" / "config" / "config.yaml"
+    if not config_path.exists():
+        return fallback
+
+    try:
+        import yaml
+        with open(config_path) as f:
+            main_cfg = yaml.safe_load(f)
+        profile_name = main_cfg.get("active_profile", "")
+        if not profile_name:
+            return fallback
+
+        profile_path = config_path.parent / profile_name
+        if not profile_path.exists():
+            return fallback
+
+        with open(profile_path) as f:
+            profile_cfg = yaml.safe_load(f)
+
+        root_data = profile_cfg.get("root_data_folder", "")
+        video_subdir = (profile_cfg.get("data_paths") or {}).get("video", "camera-video")
+        if root_data:
+            resolved = _AGENT_FRAMEWORK_ROOT / root_data / video_subdir
+            if resolved.exists():
+                return str(resolved)
+    except Exception:
+        pass
+
+    return fallback
+
+
+_AGENT_VIDEO_DATA_FOLDER = _resolve_agent_video_data_folder()
 
 # Default segments to use when auto-generating a _segments.json for a new clip.
 # These match the CESAR bolt assembly operation cycle (Steps 2-5).
@@ -226,6 +267,7 @@ class AnomalySubmitter:
             return None
 
         data_folder = Path(_AGENT_VIDEO_DATA_FOLDER)
+        print(f"  [stage] Agent video data folder: {data_folder}")
         if not data_folder.exists():
             print(
                 f"\n[ERROR] Agent video data folder not found:\n  {data_folder}\n"

@@ -62,6 +62,9 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 
 > **Tip:** The active profile is set in `allspark_agent/config/config.yaml`.
 > For CESAR/anomaly video analysis, make sure `active_profile: cesar_config.yaml` is set.
+> If the profile points to a different use case (e.g. `HtvP_config.yaml`), the video
+> data loader will scan the wrong folder and the agent will report "FileNotFoundError"
+> even though the clip exists on disk.
 
 Verify the framework is reachable:
 

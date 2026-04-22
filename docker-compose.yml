@@ -1,0 +1,21 @@
+services:
+  edge-server:
+    build: .
+    container_name: allspark-edge-server
+    ports:
+      - "8080:8080"   # Edge API Server
+      - "8081:8081"   # Control Plane UI
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./python/config.yaml:/app/python/config.yaml
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - allspark
+
+networks:
+  allspark:
+    driver: bridge
+

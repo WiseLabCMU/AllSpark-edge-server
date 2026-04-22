@@ -78,21 +78,23 @@ def _status_badge_color(status: str) -> str:
 
 
 def _launch_rerun() -> None:
-    ui.notify("Launching Rerun native viewer…", type="info")
-    gui_app = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..", "..", "..", "..", "..",
-            "allspark-datacapture", "GUI", "app.py",
+    """Launch the Rerun anomaly viewer then navigate to /rerun."""
+    rerun_server = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "rerun_server.py")
+    )
+    if os.path.exists(rerun_server):
+        ui.notify("Launching Rerun viewer…", type="info")
+        subprocess.Popen(
+            [sys.executable, rerun_server],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-    )
-    dummy_server = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "dummy_rerun_server.py")
-    )
-    if os.path.exists(gui_app):
-        subprocess.Popen([sys.executable, gui_app, "--root_folder", "/tmp", "--lean"])
-    elif os.path.exists(dummy_server):
-        subprocess.Popen([sys.executable, dummy_server])
+    else:
+        ui.notify(
+            f"Rerun server not found at:\n{rerun_server}",
+            type="warning",
+            close_button=True,
+        )
     ui.navigate.to("/rerun")
 
 
@@ -128,7 +130,7 @@ def _create_session_viewer() -> None:
                         ),
                     ).props("flat")
                     ui.button(
-                        "← Back to Responses",
+                        "Back to Responses",
                         icon="arrow_back",
                         on_click=lambda: ui.navigate.to("/agent"),
                     ).props("flat")

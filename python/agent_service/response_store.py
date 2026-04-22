@@ -176,9 +176,9 @@ class AnomalyResponseStore:
             return results
 
         # Walk the folder structure collecting response.json files
-        response_files = sorted(
-            self._base.rglob(self._RESPONSE_FILE), reverse=True
-        )
+        # Sort by file modification time (newest first) for correct ordering
+        response_files = list(self._base.rglob(self._RESPONSE_FILE))
+        response_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
         for rf in response_files[:limit]:
             try:
