@@ -39,6 +39,11 @@ DEFAULT_CONFIG = {
     },
     "clientConfig": {
         "videoFormat": "mp4",
+        "audioFormat": "wav",
+        "depthFormat": "png",
+        "poseFormat": "json",
+        "timestampFormat": "txt",
+        "fps": 30.0,
         "videoChunkDurationMs": 10000,
         "videoBufferMaxMB": 16000,
         "communicationsPolicy": {

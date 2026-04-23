@@ -155,6 +155,11 @@ def create_page():
                 with ui.card().classes('w-full flex-1 min-w-[300px]'):
                     ui.label('Mobile Client Config').classes('text-lg font-bold mb-2 text-gray-700')
                     ui.input('Video Format').bind_value(config['clientConfig'], 'videoFormat').classes('w-full')
+                    ui.input('Audio Format').bind_value(config['clientConfig'], 'audioFormat').classes('w-full')
+                    ui.input('Depth Format').bind_value(config['clientConfig'], 'depthFormat').classes('w-full')
+                    ui.input('Pose Format').bind_value(config['clientConfig'], 'poseFormat').classes('w-full')
+                    ui.input('Timestamp Format').bind_value(config['clientConfig'], 'timestampFormat').classes('w-full')
+                    ui.number('FPS').bind_value(config['clientConfig'], 'fps').classes('w-full')
                     ui.number('Video Chunk Duration (ms)').bind_value(config['clientConfig'], 'videoChunkDurationMs').classes('w-full')
                     ui.number('Video Buffer Max (MB)').bind_value(config['clientConfig'], 'videoBufferMaxMB').classes('w-full')
 
