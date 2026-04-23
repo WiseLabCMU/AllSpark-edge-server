@@ -293,10 +293,14 @@ class AgentApiClient:
         """
         Build the natural-language prompt sent to the orchestrator agent.
 
+        The prompt is cell-agnostic: it infers the system context from the video
+        filename (e.g., ``ch5_*`` → Hatvan PM6 degating, ``anomaly_clip_*`` → CESAR)
+        and adapts the data-source label based on ``request.data_source``.
+
         CRITICAL – how analyze_video_frames / describe_video_scene resolve the clip
         -----------------------------------------------------------------------------
         Both video tools call VideoDataLoader.get_data(), which scans only the
-        configured data folder (allspark_agent/sample_data/cesar/camera-video/).
+        configured data folder (allspark_agent/sample_data/<profile>/camera-video/).
         It returns a list of FULL ABSOLUTE paths, e.g.:
             /Users/.../camera-video/anomaly_clip_20250917_143650.mp4
 
@@ -311,20 +315,38 @@ class AgentApiClient:
         import os
         # clip_path is the basename only (enforced by submit_anomaly_to_edge.py)
         clip_basename = os.path.basename(request.clip_path)
-        mqtt_messages_str = json.dumps(request.mqtt_clip_messages, indent=2)
+
+        # --- Infer system context from filename ---
+        _HATVAN_PREFIXES = ("ch0_", "ch1_", "ch2_", "ch3_", "ch4_", "ch5_", "ch6_")
+        lower_name = clip_basename.lower()
+        if any(lower_name.startswith(p) for p in _HATVAN_PREFIXES) or "htvp" in lower_name:
+            system_label = "the PM6 production line at the Hatvan plant"
+        else:
+            system_label = "the CESAR cell bolt screw and washer assembly operation"
+
+        # --- Data-source label ---
+        data_source = getattr(request, "data_source", "mqtt") or "mqtt"
+        if data_source.lower() == "kafka":
+            messages_label = "Kafka anomaly messages"
+            messages_section_title = "Kafka Messages captured around the anomaly"
+        else:
+            messages_label = "MQTT messages"
+            messages_section_title = "MQTT Messages captured around the anomaly"
+
+        messages_str = json.dumps(request.mqtt_clip_messages, indent=2)
 
         return (
-            f"An anomaly was detected from monitoring MQTT messages on the CESAR cell.\n"
+            f"An anomaly was detected from monitoring {messages_label} on {system_label}.\n"
             f"A video clip of the system operation was recorded during this anomaly.\n\n"
             f"## Anomaly Details\n"
             f"- Anomaly Time        : {request.anomaly_time}\n"
             f"- Clip Start Time     : {request.clip_start_time}\n"
             f"- Clip Start Timestamp: {request.clip_start_timestamp}\n"
             f"- Error Detected      : {request.error}\n"
-            f"- Expected MQTT Topic : {request.expected_topic}\n"
+            f"- Expected Topic      : {request.expected_topic}\n"
             f"- Log Path            : {request.log_path}\n\n"
-            f"## MQTT Messages captured around the anomaly\n"
-            f"{mqtt_messages_str}\n\n"
+            f"## {messages_section_title}\n"
+            f"{messages_str}\n\n"
             f"## Task\n"
             f"Call `analyze_video_frames` with `user_video_file=\"{clip_basename}\"`.\n"
             f"That is the exact filename to pass — do not modify it, do not prepend "
@@ -332,7 +354,7 @@ class AgentApiClient:
             f"against its configured video data folder.\n\n"
             f"After analysis:\n"
             f"1. Describe what is happening in the video during the anomaly period.\n"
-            f"2. Cross-reference the MQTT messages to understand the operational context.\n"
+            f"2. Cross-reference the {messages_label} to understand the operational context.\n"
             f"3. Provide insights on what likely caused the anomaly.\n"
         )
 

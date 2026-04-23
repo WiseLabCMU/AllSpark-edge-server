@@ -70,6 +70,13 @@ class AnomalyResponseStore:
         Persist an AgentResponse (and optionally the originating request) to
         disk.  Returns the absolute path to the created subfolder.
 
+        Storage location logic:
+          • If *request.anomaly_folder* is set (e.g.
+            ``uploads/anomaly_2026-04-02T20-49-04``), responses are written to
+            ``<anomaly_folder>/agent_responses/<HHMMSS_uuid>/``.
+          • Otherwise the legacy layout is used:
+            ``<base_path>/Anomaly_YYYY-MM-DD/<HHMMSS_uuid>/``.
+
         Args:
             response:     The AgentResponse to persist.
             request:      The originating AnomalyRequest (optional).
@@ -79,13 +86,21 @@ class AnomalyResponseStore:
         """
         # Build a timestamp-based subfolder from the anomaly time or now
         ts = _parse_ts_for_folder(response.anomaly_time)
-        date_str = ts.strftime("%Y-%m-%d")
         time_str = ts.strftime("%H%M%S")
         unique_id = response.request_id.split("_")[-1] if response.request_id else "x"
         subfolder_name = f"{time_str}_{unique_id}"
 
-        date_folder = f"Anomaly_{date_str}"
-        target_dir = self._base / date_folder / subfolder_name
+        # Decide the parent directory for this response
+        anomaly_folder = (request.anomaly_folder if request else "") or ""
+        if anomaly_folder:
+            # Store inside the anomaly's own folder
+            parent = Path(anomaly_folder) / "agent_responses"
+        else:
+            # Legacy: global agent_responses directory grouped by date
+            date_str = ts.strftime("%Y-%m-%d")
+            parent = self._base / f"Anomaly_{date_str}"
+
+        target_dir = parent / subfolder_name
         target_dir.mkdir(parents=True, exist_ok=True)
 
         # Create standard subdirectories for media/data artefacts
@@ -167,20 +182,45 @@ class AnomalyResponseStore:
         """
         Return up to *limit* AgentResponse objects, newest first.
 
+        Searches both the global ``<base_path>/`` tree **and** any
+        ``uploads/anomaly_*/agent_responses/`` folders so that responses
+        stored inside per-anomaly directories are also discovered.
+
         Args:
             limit: Maximum number of results to return.
         """
         results: List[AgentResponse] = []
 
-        if not self._base.exists():
-            return results
+        # Collect response.json files from all known locations
+        response_files: List[Path] = []
 
-        # Walk the folder structure collecting response.json files
-        # Sort by file modification time (newest first) for correct ordering
-        response_files = list(self._base.rglob(self._RESPONSE_FILE))
-        response_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        # 1. Global agent_responses directory (legacy location)
+        if self._base.exists():
+            response_files.extend(self._base.rglob(self._RESPONSE_FILE))
 
-        for rf in response_files[:limit]:
+        # 2. Per-anomaly folders: uploads/anomaly_*/agent_responses/
+        #    The uploads root is the parent of self._base
+        #    (e.g. self._base = uploads/agent_responses → uploads_root = uploads)
+        uploads_root = self._base.parent
+        if uploads_root.exists():
+            for anomaly_dir in uploads_root.glob("anomaly_*"):
+                agent_resp_dir = anomaly_dir / "agent_responses"
+                if agent_resp_dir.is_dir():
+                    response_files.extend(agent_resp_dir.rglob(self._RESPONSE_FILE))
+
+        # Deduplicate (in case base_path overlaps with anomaly folders)
+        seen: set = set()
+        unique_files: List[Path] = []
+        for rf in response_files:
+            resolved = rf.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_files.append(rf)
+
+        # Sort by file modification time (newest first)
+        unique_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+        for rf in unique_files[:limit]:
             try:
                 data = json.loads(rf.read_text(encoding="utf-8"))
                 results.append(AgentResponse.from_dict(data))
@@ -188,6 +228,52 @@ class AnomalyResponseStore:
                 logger.warning("Could not load response from %s: %s", rf, exc)
 
         return results
+
+    def list_response_dicts(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Like :meth:`list_responses`, but returns plain dicts that have the
+        ``anomaly_folder`` field merged in from the sibling ``request.json``
+        (when present). Used by the HTTP API so the UI can know which
+        anomaly folder a response belongs to without a second round-trip.
+        """
+        out: List[Dict[str, Any]] = []
+        for resp in self.list_responses(limit=limit):
+            d = resp.to_dict()
+            stored_at = d.get("stored_at", "")
+            d["anomaly_folder"] = self._anomaly_folder_for(stored_at)
+            out.append(d)
+        return out
+
+    def _anomaly_folder_for(self, stored_at: str) -> str:
+        """
+        Determine the anomaly folder a response belongs to.
+
+        Resolution order:
+          1. ``request.json``'s ``anomaly_folder`` field (authoritative).
+          2. Walk up the path: if any ancestor is a sibling of an
+             ``agent_responses/`` directory and matches ``anomaly_*``,
+             use that.
+          3. Empty string (legacy responses stored under the global
+             ``uploads/agent_responses/Anomaly_YYYY-MM-DD/`` layout).
+        """
+        if not stored_at:
+            return ""
+        # 1. Check request.json
+        req = Path(stored_at) / self._REQUEST_FILE
+        if req.exists():
+            try:
+                data = json.loads(req.read_text(encoding="utf-8"))
+                folder = data.get("anomaly_folder", "")
+                if folder:
+                    return folder
+            except Exception:
+                pass
+        # 2. Walk up looking for an ``anomaly_*`` ancestor that contains
+        #    an ``agent_responses`` directory (the per-anomaly layout).
+        for parent in Path(stored_at).parents:
+            if parent.name.startswith("anomaly_") and (parent / "agent_responses").is_dir():
+                return str(parent)
+        return ""
 
     def get_response(self, stored_at: str) -> Optional[AgentResponse]:
         """

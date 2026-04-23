@@ -222,6 +222,8 @@ async def handle_agent_analyze(request):
         expected_topic=body.get("expected_topic", "N/A"),
         mqtt_clip_messages=body.get("mqtt_clip_messages", []),
         video_storage_path=body.get("video_storage_path", ""),
+        data_source=body.get("data_source", "mqtt"),
+        anomaly_folder=body.get("anomaly_folder", ""),
         extra_metadata=body.get("extra_metadata", {}),
     )
 
@@ -350,7 +352,7 @@ async def handle_agent_responses(request):
         {
             "success": True,
             "count": len(responses),
-            "responses": [r.to_dict() for r in responses],
+            "responses": _response_store.list_response_dicts(limit=limit),
         }
     )
 

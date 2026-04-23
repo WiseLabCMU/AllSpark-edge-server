@@ -119,14 +119,51 @@ def _resolve_agent_video_data_folder() -> str:
 _AGENT_VIDEO_DATA_FOLDER = _resolve_agent_video_data_folder()
 
 # Default segments to use when auto-generating a _segments.json for a new clip.
-# These match the CESAR bolt assembly operation cycle (Steps 2-5).
-_DEFAULT_SEGMENTS = {
+
+# CESAR bolt assembly operation cycle (Steps 2-5, ~12s cycle).
+_CESAR_SEGMENTS = {
     "segments": [
         {"id": "Steps 2 and 3", "times": [0, 7]},
         {"id": "Step 4",        "times": [7, 9]},
         {"id": "Step 5",        "times": [9, 12]},
     ]
 }
+
+# Hatvan PM6 degating / ch5 operation cycle (Steps 1-7, ~50s cycle).
+_HATVAN_CH5_SEGMENTS = {
+    "segments": [
+        {"id": "Step 1", "times": [0, 9]},
+        {"id": "Step 2", "times": [9, 12]},
+        {"id": "Step 3", "times": [12, 21]},
+        {"id": "Step 4", "times": [21, 28]},
+        {"id": "Step 5", "times": [28, 40]},
+        {"id": "Step 6", "times": [40, 43]},
+        {"id": "Step 7", "times": [43, 50]},
+    ]
+}
+
+# Hatvan PM6 pellet feeder / ch3 operation cycle (Steps 1-4, ~35s cycle).
+_HATVAN_CH3_SEGMENTS = {
+    "segments": [
+        {"id": "Step 1", "times": [0, 6]},
+        {"id": "Step 2", "times": [6, 17]},
+        {"id": "Step 3", "times": [17, 38]},
+        {"id": "Step 4", "times": [29, 35]},
+    ]
+}
+
+
+def _select_default_segments(clip_filename: str) -> dict:
+    """Pick the correct default segments based on the clip filename."""
+    lower = clip_filename.lower()
+    if lower.startswith("ch5_") or "degating" in lower:
+        return _HATVAN_CH5_SEGMENTS
+    if lower.startswith("ch3_") or "pellet" in lower:
+        return _HATVAN_CH3_SEGMENTS
+    # Any other chN_ prefix → use ch5 as a generic Hatvan fallback
+    if lower.startswith("ch") and len(lower) > 3 and lower[2:].split("_", 1)[0].isdigit():
+        return _HATVAN_CH5_SEGMENTS
+    return _CESAR_SEGMENTS
 
 sys.path.insert(0, str(_PYTHON_DIR))
 
@@ -173,6 +210,8 @@ class AnomalySubmitter:
         expected_topic: str = "N/A",
         mqtt_messages: Optional[List[Dict[str, Any]]] = None,
         extra_metadata: Optional[Dict[str, Any]] = None,
+        data_source: str = "mqtt",
+        anomaly_folder: str = "",
     ) -> None:
         self._base_url = f"http://{edge_host}:{edge_port}"
         self._adk_url = adk_url.rstrip("/")
@@ -185,6 +224,8 @@ class AnomalySubmitter:
         self.mqtt_messages: List[Dict[str, Any]] = mqtt_messages or []
         self.extra_metadata: Dict[str, Any] = extra_metadata or {}
         self.clip_start_time = clip_start_time
+        self.data_source = data_source
+        self.anomaly_folder = anomaly_folder
 
         # Resolve anomaly_time – auto-derive from filename if not supplied
         if anomaly_time:
@@ -292,13 +333,15 @@ class AnomalySubmitter:
         if segments_dest.exists():
             print(f"  [stage] Segments file already exists: {segments_dest}")
         else:
+            selected_segments = _select_default_segments(src.name)
             print(f"  [stage] Generating default segments → {segments_dest}")
             segments_dest.write_text(
-                json.dumps(_DEFAULT_SEGMENTS, indent=2), encoding="utf-8"
+                json.dumps(selected_segments, indent=2), encoding="utf-8"
             )
-            print(f"  [stage] ✅ Segments written.")
+            seg_times = [s["times"] for s in selected_segments["segments"]]
+            print(f"  [stage] ✅ Segments written ({len(seg_times)} segments, times: {seg_times}).")
             print(
-                f"  [stage] NOTE: Default segment times [0–7, 7–9, 9–12 s] are used.\n"
+                f"  [stage] NOTE: Default segments were auto-selected based on filename.\n"
                 f"  [stage]       Edit {segments_dest.name} to match your clip's actual operation cycle."
             )
 
@@ -463,6 +506,8 @@ class AnomalySubmitter:
             "error": self.error,
             "expected_topic": self.expected_topic,
             "mqtt_clip_messages": self.mqtt_messages,
+            "data_source": self.data_source,
+            "anomaly_folder": self.anomaly_folder,
             "extra_metadata": {
                 **self.extra_metadata,
                 "original_clip_path": self.clip_path,  # keep full path in metadata
@@ -649,6 +694,21 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="HTTP timeout for the agent call in seconds (default: 360).",
     )
+    p.add_argument(
+        "--data-source",
+        default="mqtt",
+        choices=["mqtt", "kafka"],
+        metavar="SOURCE",
+        help="Source of anomaly data messages: 'mqtt' or 'kafka' (default: mqtt).",
+    )
+    p.add_argument(
+        "--anomaly-folder",
+        default="",
+        metavar="PATH",
+        help="Path to an existing anomaly folder (e.g. uploads/anomaly_2026-04-02T20-49-04). "
+             "When set, agent responses are stored under <folder>/agent_responses/ "
+             "alongside the video and log files.",
+    )
 
     return p
 
@@ -671,6 +731,8 @@ def main() -> None:
         error=args.error,
         expected_topic=args.expected_topic,
         mqtt_messages=mqtt_messages,
+        data_source=args.data_source,
+        anomaly_folder=args.anomaly_folder,
     )
 
     success = submitter.submit()

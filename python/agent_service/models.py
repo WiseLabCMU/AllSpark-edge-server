@@ -23,8 +23,13 @@ class AnomalyRequest:
         clip_start_timestamp: Epoch-millisecond timestamp of clip start.
         error: Error message or label that triggered the anomaly.
         expected_topic: MQTT topic that was expected but missed.
-        mqtt_clip_messages: MQTT messages captured around the anomaly window.
+        mqtt_clip_messages: MQTT/Kafka messages captured around the anomaly window.
         video_storage_path: Root path under which video chunks live.
+        data_source: Source of anomaly data messages ("mqtt" or "kafka").
+        anomaly_folder: Path to the pre-existing anomaly folder (e.g.
+            uploads/anomaly_2026-04-02T20-49-04). When set, agent responses
+            are stored under <anomaly_folder>/agent_responses/ instead of the
+            global agent_responses directory.
         extra_metadata: Any additional key/value pairs callers want forwarded.
     """
 
@@ -37,6 +42,8 @@ class AnomalyRequest:
     expected_topic: str = "N/A"
     mqtt_clip_messages: List[Dict[str, Any]] = field(default_factory=list)
     video_storage_path: str = ""
+    data_source: str = "mqtt"
+    anomaly_folder: str = ""
     extra_metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
