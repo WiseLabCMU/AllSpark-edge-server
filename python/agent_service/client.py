@@ -36,7 +36,7 @@ class AgentApiClient:
         "agent_app_name":   "allspark_agent",
         "agent_user_id":    "user",
         "agent_session_id": "edge_session_001",   # used as a base; unique id appended per request
-        "agent_timeout":    300,
+        "agent_timeout":    900,
         "agent_init_message": "Hey, can you help me do some analysis?"
     }
     """
@@ -51,7 +51,7 @@ class AgentApiClient:
         self._app_name: str = config.get("agent_app_name", "allspark_agent")
         self._user_id: str = config.get("agent_user_id", "user")
         self._base_session_id: str = config.get("agent_session_id", "edge_session")
-        self._timeout: int = int(config.get("agent_timeout", 300))
+        self._timeout: int = int(config.get("agent_timeout", 900))
         self._init_message: str = config.get(
             "agent_init_message", "Hey, can you help me do some analysis?"
         )

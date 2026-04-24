@@ -37,7 +37,151 @@ from pages.settings import load_config, get_edge_base_url
 # Constants
 # ---------------------------------------------------------------------------
 
-_POLL_INTERVAL_SEC = 10.0
+_POLL_INTERVAL_SEC = 5.0
+
+# Severity heuristics – derived from the request's `error` label.
+_CRITICAL_KEYWORDS = re.compile(
+    r"\b(critical|fault|fatal|emergency|stopped|missing|missed|overheat|over[- ]?temp|crash)\b",
+    re.IGNORECASE,
+)
+
+
+def _severity_for(r: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Decide the on-screen severity flag for one anomaly response.
+    Returns a dict with keys: level, label, icon, bg, border.
+
+    Levels:
+      - agent_error : the agent itself errored (distinct from a flagged anomaly)
+      - critical    : error label contains a critical keyword
+      - flagged     : default for any anomaly that the agent processed
+    """
+    status = r.get("status", "")
+    error_label = (r.get("error") or "").strip()
+
+    if status == "error":
+        return {
+            "level": "agent_error",
+            "label": "AGENT ERROR",
+            "icon": "⚠️",
+            "bg": "bg-gray-600",
+            "border": "border-l-gray-600",
+        }
+    if error_label and _CRITICAL_KEYWORDS.search(error_label):
+        return {
+            "level": "critical",
+            "label": "CRITICAL",
+            "icon": "🛑",
+            "bg": "bg-red-600",
+            "border": "border-l-red-600",
+        }
+    return {
+        "level": "flagged",
+        "label": "FLAGGED",
+        "icon": "🚩",
+        "bg": "bg-amber-500",
+        "border": "border-l-amber-500",
+    }
+
+
+# Keywords used to spot the line that actually describes the anomaly within
+# a longer agent summary (case-insensitive). More specific keywords first.
+_ANOMALY_KEYWORDS = (
+    "anomaly", "anomalous", "deviation", "deviates", "missing",
+    "missed", "fault", "failure", "failed", "issue",
+    "problem", "abnormal", "unexpected", "out of", "exceed",
+    "stopped", "stall", "stuck", "incomplete", "no signal",
+    "no response", "did not", "doesn't", "does not",
+)
+
+# Markdown headings that often introduce the anomaly description.
+_ANOMALY_HEADINGS = (
+    "anomaly", "issue", "problem", "finding", "diagnosis",
+    "root cause", "summary", "observation", "conclusion",
+)
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _extract_anomaly_line(summary: str, max_chars: int = 240) -> str:
+    """
+    Pick the most informative line from an agent summary to show as the
+    card preview.
+
+      1. Strip markdown formatting.
+      2. Prefer the content directly following a heading like
+         "Anomaly:" / "Finding:" / "Diagnosis:".
+      3. Otherwise, pick the first line containing an anomaly keyword.
+      4. Fall back to the first non-trivial sentence.
+    """
+    if not summary:
+        return ""
+
+    raw_lines = [ln.strip() for ln in summary.splitlines()]
+    cleaned: List[str] = []
+    for ln in raw_lines:
+        if not ln:
+            continue
+        stripped = re.sub(r"^[#>\-\*\d\.\s]+", "", ln).strip()
+        stripped = re.sub(r"[*_`]+", "", stripped).strip()
+        if stripped:
+            cleaned.append(stripped)
+
+    if not cleaned:
+        return ""
+
+    # 2a. Inline heading: "Anomaly: pellet feeder stalled"
+    for line in cleaned:
+        for head in _ANOMALY_HEADINGS:
+            m = re.match(rf"^{head}\s*[:\-—]\s*(.+)$", line, re.IGNORECASE)
+            if m and len(m.group(1).strip()) > 6:
+                return _truncate(m.group(1), max_chars)
+
+    # 2b. Heading on its own line, content on the next.
+    for i, line in enumerate(cleaned[:-1]):
+        low = line.lower().rstrip(":").strip()
+        if low in _ANOMALY_HEADINGS and len(cleaned[i + 1]) > 6:
+            return _truncate(cleaned[i + 1], max_chars)
+
+    # 3. First line containing an anomaly keyword.
+    for line in cleaned:
+        low = line.lower()
+        if any(kw in low for kw in _ANOMALY_KEYWORDS):
+            return _truncate(line, max_chars)
+
+    # 4. First non-trivial sentence.
+    return _truncate(cleaned[0], max_chars)
+
+
+def _relative_time(iso_ts: str) -> str:
+    """Return a short 'N min ago' style string from an ISO timestamp."""
+    if not iso_ts:
+        return ""
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.strptime(iso_ts[:19], "%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        return ""
+    try:
+        now = datetime.utcnow()
+        delta = now - ts
+        secs = int(delta.total_seconds())
+        if secs < 0:
+            return "just now"
+        if secs < 60:
+            return f"{secs}s ago"
+        if secs < 3600:
+            return f"{secs // 60}m ago"
+        if secs < 86400:
+            return f"{secs // 3600}h ago"
+        return f"{secs // 86400}d ago"
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -73,9 +217,6 @@ class AnomalyOption:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _status_badge_color(status: str) -> str:
-    return "green" if status == "success" else "red"
 
 
 def _launch_rerun(anomaly_folder: str = "") -> None:
@@ -281,51 +422,156 @@ def create_page() -> None:
         adk_app_name: str = agent_cfg.get("agent_app_name", "allspark_agent")
         adk_user_id: str = agent_cfg.get("agent_user_id", "user")
 
-        with menu("Agentic Framework Control"):
+        with menu("Agent — Anomaly Feed (Factory Floor Monitor)", hide_title=True):
 
-            with ui.row().classes("w-full justify-between items-center mb-4"):
-                ui.label("Recent Responses").classes("text-xl font-bold")
-                refresh_btn = ui.button("Refresh", icon="refresh").props(
-                    "flat dense"
-                ).classes("text-blue-600")
+            # Inject the small CSS we need for the LIVE pulse + new-card flash.
+            ui.add_head_html("""
+            <style>
+              @keyframes allspark-pulse {
+                0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+                70%  { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+              }
+              .allspark-live-dot {
+                width: 10px; height: 10px; border-radius: 50%;
+                background: #dc2626; display: inline-block;
+                animation: allspark-pulse 1.6s infinite;
+              }
+              @keyframes allspark-flash {
+                0%   { background-color: #fef3c7; }
+                100% { background-color: #ffffff; }
+              }
+              .allspark-new-card {
+                animation: allspark-flash 6s ease-out;
+                outline: 2px solid #f59e0b;
+              }
+              .allspark-chip {
+                display: inline-block;
+                padding: 1px 8px; border-radius: 9999px;
+                font-size: 11px; font-weight: 600;
+                background: #f1f5f9; color: #334155;
+                margin-right: 4px;
+              }
+            </style>
+            """)
 
-            responses_container = ui.column().classes("w-full gap-4")
+            # ── Live header strip ─────────────────────────────────────────────
+            with ui.row().classes("w-full justify-between items-center mb-2"):
+                with ui.row().classes("items-center gap-3"):
+                    ui.html('<span class="allspark-live-dot"></span>')
+                    ui.label("LIVE").classes(
+                        "text-xs font-extrabold text-red-600 tracking-widest"
+                    )
+                    ui.label("Anomaly Feed").classes(
+                        "text-2xl font-bold text-gray-800"
+                    )
+                    count_badge = ui.label("0 anomalies").classes(
+                        "ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 "
+                        "rounded text-xs font-bold"
+                    )
+                with ui.row().classes("items-center gap-3"):
+                    last_updated_label = ui.label("").classes(
+                        "text-xs text-gray-400"
+                    )
+                    refresh_btn = ui.button("Refresh", icon="refresh").props(
+                        "flat dense"
+                    ).classes("text-blue-600")
+
+            ui.label(
+                "Live triage view for factory-floor engineers — every flagged "
+                "anomaly the agent has analysed, newest first. Cards flash amber "
+                "when a new anomaly arrives."
+            ).classes("text-sm text-gray-500 mb-4")
+
+            # ── Filter toolbar ────────���───────────────────────────────────────
+            with ui.row().classes("w-full items-center gap-4 mb-3"):
+                ui.label("Filter:").classes("text-xs font-bold text-gray-500")
+                severity_filter = ui.toggle(
+                    ["All", "Critical", "Flagged", "Agent Errors"],
+                    value="All",
+                ).props("dense unelevated")
+
+            responses_container = ui.column().classes("w-full gap-3")
+
+            # State carried across refresh ticks
+            seen_ids: set = set()
+            new_ids: set = set()
+            current_responses: List[Dict[str, Any]] = []
+            first_render: Dict[str, bool] = {"value": True}
+            # Signature of what's currently rendered, used to skip needless
+            # re-renders so open ui.expansion drop-downs stay open across polls.
+            render_sig: Dict[str, Any] = {"value": None}
 
             # ── Response rendering ────────────────────────────────────────────
 
-            def _render_responses(responses: List[Dict[str, Any]]) -> None:
+            def _filter_responses(responses: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                mode = severity_filter.value or "All"
+                if mode == "All":
+                    return responses
+                target = {
+                    "Critical":      "critical",
+                    "Flagged":       "flagged",
+                    "Agent Errors":  "agent_error",
+                }.get(mode)
+                if not target:
+                    return responses
+                return [r for r in responses if _severity_for(r)["level"] == target]
+
+            def _render_responses(responses: List[Dict[str, Any]], force: bool = False) -> None:
+                visible = _filter_responses(responses)
+
+                # Always update header timestamp so engineers see liveness,
+                # even when the actual list of cards has not changed.
+                from datetime import datetime
+                count_badge.set_text(
+                    f"{len(visible)} anomal{'y' if len(visible) == 1 else 'ies'}"
+                )
+                last_updated_label.set_text(
+                    f"Last updated {datetime.now().strftime('%H:%M:%S')}"
+                )
+
+                # Compute a lightweight signature of what's about to be rendered.
+                # If the same set of cards (and their flash state, and the active
+                # filter) is already on screen, do NOT clear the container — that
+                # would collapse any drop-down the engineer has opened.
+                sig = (
+                    severity_filter.value,
+                    tuple(r.get("request_id", "") for r in visible),
+                    tuple(sorted(new_ids)),
+                )
+                if not force and sig == render_sig["value"]:
+                    return
+                render_sig["value"] = sig
+
                 responses_container.clear()
                 with responses_container:
-                    if not responses:
-                        with ui.card().classes("w-full p-6 text-center bg-gray-50"):
-                            ui.icon("search_off", size="3rem").classes("text-gray-300 mb-2")
-                            ui.label("No agent responses yet.").classes(
-                                "text-gray-500 font-semibold"
+                    if not visible:
+                        with ui.card().classes("w-full p-6 text-center bg-green-50 border border-green-200"):
+                            ui.icon("check_circle", size="3rem").classes("text-green-400 mb-2")
+                            ui.label("No anomalies detected — system nominal ✅").classes(
+                                "text-green-700 font-semibold"
                             )
                             ui.label(
-                                "Submit a new anomaly via the Debug page to start an investigation."
-                            ).classes("text-gray-400 text-sm mt-1")
-                            ui.html(
-                                '<a href="/debug" class="text-indigo-500 text-sm mt-2 inline-block hover:underline">'
-                                "→ Go to Debug page"
-                                "</a>"
-                            )
+                                "When the agent flags a new anomaly it will appear here automatically."
+                            ).classes("text-green-500 text-sm mt-1")
                         return
-                    for r in responses:
+                    for r in visible:
                         _render_response_card(r)
 
             def _render_response_card(r: Dict[str, Any]) -> None:
-                status = r.get("status", "unknown")
-                color = _status_badge_color(status)
+                sev = _severity_for(r)
                 anomaly_time = r.get("anomaly_time", "N/A")
-                clip_path = r.get("clip_path", "N/A")
+                clip_path = r.get("clip_path", "")
                 clip_basename = os.path.basename(clip_path) if clip_path else "N/A"
                 session_id: str = r.get("session_id", "")
                 summary = r.get("summary", "")
-                created_at = r.get("created_at", "")
                 stored_at = r.get("stored_at", "")
                 error_msg = r.get("error_message", "")
                 anomaly_folder = r.get("anomaly_folder", "")
+                error_label = r.get("error", "")
+                expected_topic = r.get("expected_topic", "")
+                video_clip_url = r.get("video_clip_url", "")
+                request_id = r.get("request_id", "")
 
                 opt = AnomalyOption(
                     session_id=session_id,
@@ -334,78 +580,133 @@ def create_page() -> None:
                     adk_base_url=adk_base_url,
                 )
 
-                with ui.card().classes("w-full shadow-sm bg-white border border-gray-100"):
+                # New-card flash highlight
+                is_new = request_id in new_ids
+                extra_class = " allspark-new-card" if is_new else ""
 
-                    # ── Card header ───────────────────────────────────────────
-                    with ui.row().classes("w-full justify-between items-start"):
-                        with ui.column().classes("gap-1 flex-1 min-w-0"):
-                            with ui.row().classes("items-center gap-2 flex-wrap"):
-                                ui.badge(status.upper(), color=color).classes("text-xs")
-                                ui.label(clip_basename).classes(
-                                    "font-bold text-gray-800 truncate"
+                card_classes = (
+                    f"w-full shadow-sm bg-white border border-gray-100 "
+                    f"border-l-4 {sev['border']}{extra_class}"
+                )
+
+                with ui.card().classes(card_classes):
+                    with ui.row().classes("w-full items-stretch no-wrap gap-4"):
+                        # ── LEFT RAIL: severity + time ────────────────────
+                        with ui.column().classes("items-center justify-start gap-1 min-w-[140px]"):
+                            ui.html(
+                                f'<span class="px-2 py-1 {sev["bg"]} text-white '
+                                f'rounded text-xs font-extrabold tracking-wide">'
+                                f'{sev["icon"]} {sev["label"]}</span>'
+                            )
+                            time_part = anomaly_time[11:19] if len(anomaly_time) >= 19 else anomaly_time
+                            date_part = anomaly_time[:10] if len(anomaly_time) >= 10 else ""
+                            ui.label(time_part).classes(
+                                "text-2xl font-bold text-gray-800 mt-1"
+                            )
+                            if date_part:
+                                ui.label(date_part).classes("text-xs text-gray-400")
+                            rel = _relative_time(anomaly_time)
+                            if rel:
+                                ui.label(rel).classes("text-xs text-gray-500 italic")
+
+                        # ── CENTER: machine, chips, summary preview ───────
+                        with ui.column().classes("flex-1 min-w-0 gap-1"):
+                            ui.label(clip_basename).classes(
+                                "font-bold text-gray-800 truncate"
+                            ).tooltip(clip_path or "")
+
+                            # Triage chips: error label + expected topic
+                            chip_html = ""
+                            if error_label and error_label != "N/A":
+                                chip_html += (
+                                    f'<span class="allspark-chip" '
+                                    f'style="background:#fee2e2;color:#991b1b">'
+                                    f'⚑ {error_label}</span>'
                                 )
-                            ui.label(f"Anomaly Time: {anomaly_time}").classes(
-                                "text-sm text-gray-600"
-                            )
-                            ui.label(f"Clip: {clip_path}").classes(
-                                "text-xs text-gray-400 font-mono truncate"
-                            ).tooltip(clip_path)
-                            if session_id:
-                                ui.label(f"Session: {session_id}").classes(
-                                    "text-xs text-gray-300 font-mono truncate"
-                                ).tooltip(session_id)
-                        ui.label(created_at[:19] if created_at else "").classes(
-                            "text-xs text-gray-400 whitespace-nowrap ml-2 mt-1"
-                        )
+                            if expected_topic and expected_topic != "N/A":
+                                chip_html += (
+                                    f'<span class="allspark-chip" '
+                                    f'style="background:#e0e7ff;color:#3730a3">'
+                                    f'📡 {expected_topic}</span>'
+                                )
+                            if chip_html:
+                                ui.html(chip_html)
 
-                    ui.separator().classes("my-2")
-
-                    # ── Card body ─────────────────────────────────────────────
-                    if status == "success" and summary:
-                        with ui.expansion(
-                            "Agent Summary", icon="psychology", value=True
-                        ).classes("w-full"):
-                            ui.markdown(summary).classes("text-sm")
-                    elif status == "error":
-                        with ui.row().classes("items-start gap-2"):
-                            ui.icon("error_outline", size="sm").classes("text-red-400 mt-0.5")
-                            ui.label(error_msg or "Unknown error").classes(
-                                "text-red-600 text-sm"
-                            )
-                    else:
-                        ui.label("No summary available.").classes(
-                            "text-gray-400 text-sm italic"
-                        )
-
-                    # ── Card footer ───────────────────────────────────────────
-                    with ui.row().classes("items-center gap-2 mt-3 flex-wrap"):
-                        if opt.has_session:
-                            viewer_url = opt.session_viewer_url()
-                            ui.button(
-                                "Continue Investigation",
-                                icon="psychology_alt",
-                                on_click=lambda v=viewer_url: ui.navigate.to(v),
-                            ).classes("bg-indigo-600 text-white text-sm")
-
-                        if status == "success":
-                            rerun_btn = ui.button(
-                                "View in Rerun.io",
-                                icon="bar_chart",
-                                on_click=lambda f=anomaly_folder: _launch_rerun(f),
-                            ).props("flat").classes("text-gray-500 text-sm")
-                            if anomaly_folder:
-                                rerun_btn.tooltip(
-                                    f"Open per-anomaly viewer for {os.path.basename(anomaly_folder)}"
+                            # Summary preview (2-line clamp)
+                            if sev["level"] == "agent_error":
+                                ui.label(error_msg or "Unknown agent error").classes(
+                                    "text-red-600 text-sm"
+                                )
+                            elif summary:
+                                preview = _extract_anomaly_line(summary, max_chars=240)
+                                if not preview:
+                                    preview = _truncate(
+                                        summary.strip().replace("\n", " "), 240
+                                    )
+                                ui.label(preview).classes(
+                                    "text-sm text-gray-700 mt-1 font-medium"
                                 )
                             else:
-                                rerun_btn.tooltip(
-                                    "Open the global Rerun viewer (all stored anomalies)"
+                                ui.label("No summary available.").classes(
+                                    "text-gray-400 text-sm italic"
                                 )
 
-                    if stored_at:
-                        ui.label(f"📁 {stored_at}").classes(
-                            "text-xs text-gray-300 font-mono mt-2 truncate"
-                        ).tooltip(stored_at)
+                            # Footer micro-line: session id + storage tooltip
+                            with ui.row().classes("items-center gap-3 mt-1"):
+                                if session_id:
+                                    ui.label(f"session: {session_id}").classes(
+                                        "text-[10px] text-gray-400 font-mono truncate"
+                                    ).tooltip(session_id)
+                                if stored_at:
+                                    ui.icon("folder", size="xs").classes(
+                                        "text-gray-300"
+                                    ).tooltip(stored_at)
+
+                        # ── RIGHT RAIL: actions ───────────────────────────
+                        with ui.column().classes("items-stretch gap-1 min-w-[170px]"):
+                            if video_clip_url:
+                                ui.button(
+                                    "▶ Watch Clip",
+                                    on_click=lambda u=video_clip_url, n=clip_basename:
+                                        _open_video_dialog(u, n),
+                                ).props("dense").classes(
+                                    "bg-amber-500 text-white text-xs"
+                                )
+                            if opt.has_session:
+                                viewer_url = opt.session_viewer_url()
+                                ui.button(
+                                    "🧠 Investigate",
+                                    on_click=lambda v=viewer_url: ui.navigate.to(v),
+                                ).props("dense").classes(
+                                    "bg-indigo-600 text-white text-xs"
+                                )
+                            if sev["level"] != "agent_error":
+                                rerun_btn = ui.button(
+                                    "📊 Rerun Viewer",
+                                    on_click=lambda f=anomaly_folder: _launch_rerun(f),
+                                ).props("dense flat").classes("text-gray-500 text-xs")
+                                if anomaly_folder:
+                                    rerun_btn.tooltip(
+                                        f"Open per-anomaly viewer for "
+                                        f"{os.path.basename(anomaly_folder)}"
+                                    )
+
+                    # ── Inline drop-down: Full Agent Summary ──────────────
+                    if summary and sev["level"] != "agent_error":
+                        with ui.expansion(
+                            "📄 Full Summary", icon=None, value=False,
+                        ).classes("w-full mt-2 border-t border-gray-100"):
+                            ui.markdown(summary).classes("text-sm text-gray-700")
+
+            # ── Dialog helpers ────────────────────────────────────────────────
+
+            def _open_video_dialog(video_url: str, title: str) -> None:
+                with ui.dialog() as dialog, ui.card().classes("p-2"):
+                    ui.label(title).classes("font-bold text-sm mb-1")
+                    ui.video(video_url).classes("w-[640px] max-w-full")
+                    with ui.row().classes("justify-end w-full mt-1"):
+                        ui.button("Close", on_click=dialog.close).props("flat dense")
+                dialog.open()
 
             # ── Data fetching ─────────────────────────────────────────────────
 
@@ -414,7 +715,7 @@ def create_page() -> None:
                     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as http:
                         async with http.get(
                             f"{edge_base_url}/api/agent/responses",
-                            params={"limit": "30"},
+                            params={"limit": "50"},
                             timeout=aiohttp.ClientTimeout(total=10),
                         ) as resp:
                             if resp.status != 200:
@@ -423,8 +724,43 @@ def create_page() -> None:
                 except Exception:
                     return
 
-                _render_responses(data.get("responses", []))
+                responses = data.get("responses", [])
+                current_responses[:] = responses
 
+                # Diff against last seen request_ids to highlight new anomalies
+                fetched_ids = {r.get("request_id", "") for r in responses if r.get("request_id")}
+                if first_render["value"]:
+                    # First load – seed seen_ids without flashing anything
+                    seen_ids.update(fetched_ids)
+                    new_ids.clear()
+                    first_render["value"] = False
+                else:
+                    fresh = fetched_ids - seen_ids
+                    if fresh:
+                        new_ids.clear()
+                        new_ids.update(fresh)
+                        seen_ids.update(fresh)
+                        n = len(fresh)
+                        ui.notify(
+                            f"🚩 {n} new anomaly flagged" if n == 1
+                            else f"🚩 {n} new anomalies flagged",
+                            type="warning",
+                            position="top-right",
+                            timeout=5000,
+                        )
+                        # Update browser tab title
+                        ui.run_javascript(
+                            f"document.title = '({n}) Anomaly Feed — AllSpark';"
+                        )
+                    else:
+                        new_ids.clear()
+
+                _render_responses(responses)
+
+            def _on_filter_change() -> None:
+                _render_responses(current_responses, force=True)
+
+            severity_filter.on_value_change(_on_filter_change)
             refresh_btn.on_click(_refresh_responses)
             ui.timer(_POLL_INTERVAL_SEC, _refresh_responses)
             ui.timer(0.1, _refresh_responses, once=True)

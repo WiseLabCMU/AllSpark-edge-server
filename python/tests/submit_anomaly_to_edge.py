@@ -201,7 +201,7 @@ class AnomalySubmitter:
         edge_host: str = "127.0.0.1",
         edge_port: int = 8080,
         adk_url: str = "http://localhost:8000",
-        timeout: int = 360,
+        timeout: int = 1000,
         clip_path: str,
         anomaly_time: Optional[str] = None,
         clip_start_time: str = "",
@@ -690,9 +690,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--timeout",
         type=int,
-        default=360,
+        default=1000,
         metavar="SECONDS",
-        help="HTTP timeout for the agent call in seconds (default: 360).",
+        help="HTTP timeout for the agent call in seconds (default: 1000, "
+             "must exceed the Edge Server's agent_timeout in config.yaml).",
     )
     p.add_argument(
         "--data-source",

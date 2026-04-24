@@ -241,7 +241,64 @@ class AnomalyResponseStore:
             d = resp.to_dict()
             stored_at = d.get("stored_at", "")
             d["anomaly_folder"] = self._anomaly_folder_for(stored_at)
+
+            # Enrich with triage fields from sibling request.json (additive)
+            triage = self._triage_fields_for(stored_at)
+            for k, v in triage.items():
+                # Don't overwrite anything the response itself already provides
+                d.setdefault(k, v)
             out.append(d)
+        return out
+
+    def _triage_fields_for(self, stored_at: str) -> Dict[str, Any]:
+        """
+        Pull factory-floor triage fields from the sibling request.json and
+        the on-disk video_clips/ directory.
+
+        Returned keys (all optional):
+          - error            : error label that triggered the anomaly
+          - expected_topic   : MQTT/Kafka topic that was expected but missed
+          - clip_path        : original clip path from the request
+          - video_clip_url   : browser URL to play the first stored video clip
+                               via the /anomaly-media static mount, or "" if
+                               no clip is present.
+        """
+        out: Dict[str, Any] = {}
+        if not stored_at:
+            return out
+
+        # request.json fields
+        req_path = Path(stored_at) / self._REQUEST_FILE
+        if req_path.exists():
+            try:
+                req_data = json.loads(req_path.read_text(encoding="utf-8"))
+                for key in ("error", "expected_topic", "clip_path", "data_source"):
+                    val = req_data.get(key)
+                    if val:
+                        out[key] = val
+            except Exception:
+                pass
+
+        # First file in video_clips/, exposed via /anomaly-media static mount
+        video_dir = Path(stored_at) / self._VIDEO_CLIPS_DIR
+        if video_dir.is_dir():
+            try:
+                clips = sorted(
+                    p for p in video_dir.iterdir()
+                    if p.is_file() and p.suffix.lower() in {".mp4", ".webm", ".mov", ".m4v"}
+                )
+                if clips:
+                    # Build a URL relative to the uploads root (parent of self._base)
+                    uploads_root = self._base.parent.resolve()
+                    try:
+                        rel = clips[0].resolve().relative_to(uploads_root)
+                        out["video_clip_url"] = "/anomaly-media/" + str(rel).replace("\\", "/")
+                    except ValueError:
+                        # Stored outside the uploads tree – cannot serve
+                        pass
+            except Exception:
+                pass
+
         return out
 
     def _anomaly_folder_for(self, stored_at: str) -> str:

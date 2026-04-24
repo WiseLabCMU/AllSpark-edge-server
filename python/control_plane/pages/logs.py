@@ -6,21 +6,58 @@ from theme import menu
 from pages.settings import load_config, get_edge_base_url
 
 def get_log_paths():
+    """
+    Resolve the set of root directories the Logs page should watch.
+
+    After the folder restructure, anomaly artefacts can live in *either*:
+      - uploads/agent_responses/Anomaly_YYYY-MM-DD/<HHMMSS_uuid>/...   (legacy)
+      - uploads/anomaly_<ISO-TS>/agent_responses/<HHMMSS_uuid>/...     (new, per-anomaly)
+      - uploads/anomaly_<ISO-TS>/{video_clips,machine_anomaly_data}/...
+    and DataCapture rig output now lands under several subfolders of logs/:
+      - logs/data/datacapture-rig/      (config: rigLogs)
+      - logs/data/kafka_logs/
+      - logs/data/video_logs/
+      - logs/data/agent_responses/
+      - logs/anomalies/                  (config: anomalyLogs)
+
+    To capture everything without enumerating each subdir, we watch the two
+    top-level roots (uploads/ and logs/) in addition to the explicit config
+    paths, then dedupe so overlapping roots aren't crawled twice.
+    """
     full_config = load_config()
     cp_config = full_config.get('control_plane', {})
     mc_config = full_config.get('mobile_client', {})
 
     client_uploads_path = mc_config.get('clientUploadsPath', 'uploads/mobile_clients/')
     agent_response_path = mc_config.get('agentResponsePath', 'uploads/agent_responses/')
-    rig_logs_path = cp_config.get('logPaths', {}).get('rigLogs', 'logs/data/datacapture-rig/')
+    upload_root = mc_config.get('uploadPath', 'uploads/')
+    log_paths_cfg = cp_config.get('logPaths', {}) or {}
+    rig_logs_path = log_paths_cfg.get('rigLogs', 'logs/data/datacapture-rig/')
+    anomaly_logs_path = log_paths_cfg.get('anomalyLogs', 'logs/anomalies/')
 
     base_dir = os.path.dirname(__file__)
-    paths = [
-        os.path.abspath(os.path.join(base_dir, '..', '..', '..', client_uploads_path)),
-        os.path.abspath(os.path.join(base_dir, '..', '..', '..', agent_response_path)),
-        os.path.abspath(os.path.join(base_dir, '..', '..', '..', rig_logs_path))
+    edge_root = os.path.abspath(os.path.join(base_dir, '..', '..', '..'))
+
+    candidates = [
+        os.path.abspath(os.path.join(edge_root, client_uploads_path)),
+        os.path.abspath(os.path.join(edge_root, agent_response_path)),
+        os.path.abspath(os.path.join(edge_root, upload_root)),  # catches uploads/anomaly_*/
+        os.path.abspath(os.path.join(edge_root, rig_logs_path)),
+        os.path.abspath(os.path.join(edge_root, anomaly_logs_path)),
+        os.path.abspath(os.path.join(edge_root, 'logs')),  # catches logs/data/* and logs/anomalies/*
     ]
-    return list(set(paths))
+
+    # Dedupe: drop any path that is a (proper) descendant of another candidate
+    # — Path.rglob on the ancestor will already cover it.
+    unique: list = []
+    candidates_norm = sorted(set(candidates), key=len)
+    for c in candidates_norm:
+        if not any(
+            c != other and c.startswith(other.rstrip(os.sep) + os.sep)
+            for other in candidates_norm
+        ):
+            unique.append(c)
+    return unique
 
 def fetch_log_files(paths):
     files_dict = {}
@@ -101,16 +138,25 @@ def create_page():
             rig_logs_path = cp_config.get('logPaths', {}).get('rigLogs', 'logs/data/datacapture-rig/')
 
             base_dir = os.path.dirname(__file__)
-            abs_client_uploads = os.path.abspath(os.path.join(base_dir, '..', '..', '..', client_uploads_path))
-            abs_agent_response = os.path.abspath(os.path.join(base_dir, '..', '..', '..', agent_response_path))
-            abs_rig_logs = os.path.abspath(os.path.join(base_dir, '..', '..', '..', rig_logs_path))
+            edge_root = os.path.abspath(os.path.join(base_dir, '..', '..', '..'))
+            abs_client_uploads = os.path.abspath(os.path.join(edge_root, client_uploads_path))
+            abs_agent_response = os.path.abspath(os.path.join(edge_root, agent_response_path))
+            abs_rig_logs = os.path.abspath(os.path.join(edge_root, rig_logs_path))
+            abs_uploads_root = os.path.abspath(os.path.join(edge_root, 'uploads'))
+            abs_logs_root = os.path.abspath(os.path.join(edge_root, 'logs'))
 
             with ui.row().classes('w-full gap-4 items-center mb-2'):
                 ui.label('Filter Source:').classes('font-semibold')
                 filter_source_all = ui.checkbox('All', value=app.storage.user.get('logs_filter_source_all')).classes('font-bold')
-                filter_rig = ui.checkbox('DataCapture', value=app.storage.user.get('logs_filter_rig')).tooltip(f"Watching: {abs_rig_logs}")
-                filter_mobile = ui.checkbox('Mobile Client', value=app.storage.user.get('logs_filter_mobile')).tooltip(f"Watching: {abs_client_uploads}")
-                filter_agent = ui.checkbox('Agent', value=app.storage.user.get('logs_filter_agent')).tooltip(f"Watching: {abs_agent_response}")
+                filter_rig = ui.checkbox('DataCapture / Rig Logs', value=app.storage.user.get('logs_filter_rig')).tooltip(
+                    f"Includes:\n  • {abs_rig_logs}\n  • {abs_logs_root} (data/, anomalies/)"
+                )
+                filter_mobile = ui.checkbox('Mobile Client', value=app.storage.user.get('logs_filter_mobile')).tooltip(
+                    f"Watching: {abs_client_uploads}"
+                )
+                filter_agent = ui.checkbox('Agent / Anomalies', value=app.storage.user.get('logs_filter_agent')).tooltip(
+                    f"Includes:\n  • {abs_agent_response}\n  • {abs_uploads_root}/anomaly_*/  (per-anomaly folders)"
+                )
 
             with ui.row().classes('w-full gap-4 items-center mb-4'):
                 ui.label('Filter Type:').classes('font-semibold')
@@ -272,7 +318,7 @@ def create_page():
                     async def do_post():
                         try:
                             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as http:
-                                async with http.post(f"{edge_base_url}/api/agent/analyze", json=payload, timeout=aiohttp.ClientTimeout(total=360)) as resp:
+                                async with http.post(f"{edge_base_url}/api/agent/analyze", json=payload, timeout=aiohttp.ClientTimeout(total=1000)) as resp:
                                     res = await resp.json(content_type=None)
                             if res.get("success"):
                                 ui.notify(f"Investigation submitted. ID: {res.get('request_id')} - Check Agent page.", type="positive", timeout=5000)
@@ -432,11 +478,37 @@ def create_page():
                     if not filter_hidden.value and any(part.startswith('.') for part in Path(f['path']).parts):
                         continue
 
-                    # Source filter
-                    path_lower = f['path'].lower()
-                    if not filter_rig.value and 'datacapture' in path_lower: continue
-                    if not filter_mobile.value and 'mobile_clients' in path_lower: continue
-                    if not filter_agent.value and 'agent_responses' in path_lower: continue
+                    # Source filter — categorise each file by its path.
+                    # A single file can belong to multiple sources (e.g. an
+                    # uploads/anomaly_*/agent_responses/.../video.mp4 is both
+                    # "agent" and arguably "rig" data); we hide it only when
+                    # ALL of its categories are unchecked.
+                    path_lower = f['path'].lower().replace('\\', '/')
+                    is_mobile = 'mobile_clients' in path_lower
+                    is_agent = (
+                        'agent_responses' in path_lower
+                        or '/anomaly_' in path_lower
+                        or path_lower.startswith('uploads/anomaly_')
+                        or 'anomalies/' in path_lower
+                    )
+                    is_rig = (
+                        'datacapture' in path_lower
+                        or path_lower.startswith('logs/')
+                        or '/logs/' in path_lower
+                    ) and not is_agent and not is_mobile
+
+                    # If the file matched no category at all, treat it as rig
+                    # so it isn't silently dropped after the restructure.
+                    if not (is_mobile or is_agent or is_rig):
+                        is_rig = True
+
+                    show = (
+                        (is_mobile and filter_mobile.value)
+                        or (is_agent and filter_agent.value)
+                        or (is_rig and filter_rig.value)
+                    )
+                    if not show:
+                        continue
 
                     # Ext filter
                     if valid_exts and f['ext'] not in valid_exts and f['ext'] != 'unknown':

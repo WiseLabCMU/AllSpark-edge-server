@@ -31,6 +31,15 @@ if __name__ in {"__main__", "__mp_main__"}:
     os.makedirs(abs_upload_path, exist_ok=True)
     app.add_media_files('/videos', abs_upload_path)
 
+    # Mount the uploads root so the Anomaly Feed can serve video clips and
+    # other artefacts stored under uploads/agent_responses/... and
+    # uploads/anomaly_*/agent_responses/... directly to the browser.
+    abs_uploads_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..', '..', 'uploads')
+    )
+    os.makedirs(abs_uploads_root, exist_ok=True)
+    app.add_media_files('/anomaly-media', abs_uploads_root)
+
     # Run the control plane
     storage_secret = cp_config.get('storageSecret', 'allspark-secret')
     ui.run(title='AllSpark Control Plane', port=sidecar_port, storage_secret=storage_secret)
