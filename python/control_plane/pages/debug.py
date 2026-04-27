@@ -55,6 +55,9 @@ def create_page() -> None:
     async def debug_page() -> None:
         edge_base_url = get_edge_base_url()
 
+        full_config = load_config()
+        config = full_config.get("mobile_client", {})
+        
         # Derive the ADK dev-ui base URL from the agent_url in config
         import re as _re
         agent_url: str = config.get("agentConfig", {}).get(

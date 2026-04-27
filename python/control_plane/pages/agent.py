@@ -416,7 +416,8 @@ def create_page() -> None:
         edge_base_url = get_edge_base_url()
 
         # Derive ADK coordinates from config
-        agent_cfg: Dict[str, Any] = config.get("agentConfig", {})
+        mc_config = config.get("mobile_client", {})
+        agent_cfg: Dict[str, Any] = mc_config.get("agentConfig", {})
         raw_agent_url: str = agent_cfg.get("agent_url", "http://localhost:8000/run")
         adk_base_url: str = re.sub(r"/run$", "", raw_agent_url.rstrip("/"))
         adk_app_name: str = agent_cfg.get("agent_app_name", "allspark_agent")
