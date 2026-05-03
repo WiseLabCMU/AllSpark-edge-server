@@ -41,9 +41,9 @@ class AgentApiClient:
     }
     """
 
-    # Session creation URL (newer API): POST /apps/{app}/users/{uid}/sessions
+    # Session creation URL: POST /apps/{app}/users/{uid}/sessions
     _SESSION_PATH_TPL = "/apps/{app}/users/{uid}/sessions"
-    # Legacy per-ID endpoint (deprecated by ADK but used for lookups)
+    # Per-ID endpoint for session lookup
     _SESSION_ID_PATH_TPL = "/apps/{app}/users/{uid}/sessions/{sid}"
 
     def __init__(self, config: Dict[str, Any]) -> None:
@@ -281,11 +281,12 @@ class AgentApiClient:
             return False, None, str(exc)
 
     def _build_payload(self, session_id: str, message: str) -> Dict[str, Any]:
+        """Payload for POST /run (ADK REST API — snake_case keys)."""
         return {
-            "appName": self._app_name,
-            "userId": self._user_id,
-            "sessionId": session_id,
-            "newMessage": {"role": "user", "parts": [{"text": message}]},
+            "app_name": self._app_name,
+            "user_id": self._user_id,
+            "session_id": session_id,
+            "new_message": {"role": "user", "parts": [{"text": message}]},
         }
 
     @staticmethod
