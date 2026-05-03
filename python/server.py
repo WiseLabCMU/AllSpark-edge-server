@@ -121,8 +121,13 @@ def load_config():
     # Initialise agent singletons
     _agent_client = AgentApiClient(config.get("agentConfig", {}))
     response_path = resolve_path(config.get("agentResponsePath", "uploads/agent_responses/"))
-    _response_store = AnomalyResponseStore(response_path)
+    # Optional extra NFS/anomaly-event roots to scan for agent responses written
+    # by the kafka-profiler (e.g. /net/htvvm662/fs0/anomaly_events).
+    anomaly_event_dirs = config.get("anomalyEventDirs", [])
+    _response_store = AnomalyResponseStore(response_path, anomaly_event_dirs=anomaly_event_dirs)
     print(f"Agent client initialised. Responses stored at: {response_path}")
+    if anomaly_event_dirs:
+        print(f"Also scanning anomaly event dirs: {anomaly_event_dirs}")
 def get_project_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

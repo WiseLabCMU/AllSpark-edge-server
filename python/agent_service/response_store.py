@@ -51,10 +51,17 @@ class AnomalyResponseStore:
     _VIDEO_CLIPS_DIR = "video_clips"
     _MACHINE_ANOMALY_DATA_DIR = "machine_anomaly_data"
 
-    def __init__(self, base_path: str) -> None:
+    def __init__(self, base_path: str, anomaly_event_dirs: Optional[List[str]] = None) -> None:
         self._base = Path(base_path)
         self._base.mkdir(parents=True, exist_ok=True)
+        # Extra roots (e.g. NFS anomaly event dirs) whose Anomaly_*/agent_responses/
+        # sub-trees are also scanned by list_responses().
+        self._anomaly_event_dirs: List[Path] = [
+            Path(d) for d in (anomaly_event_dirs or []) if d
+        ]
         logger.info("AnomalyResponseStore initialised at %s", self._base)
+        if self._anomaly_event_dirs:
+            logger.info("Also scanning anomaly event dirs: %s", self._anomaly_event_dirs)
 
     # ------------------------------------------------------------------
     # Write
@@ -207,6 +214,15 @@ class AnomalyResponseStore:
                 agent_resp_dir = anomaly_dir / "agent_responses"
                 if agent_resp_dir.is_dir():
                     response_files.extend(agent_resp_dir.rglob(self._RESPONSE_FILE))
+
+        # 3. Extra NFS / anomaly-event roots (e.g. /net/htvvm662/fs0/anomaly_events)
+        #    Scan Anomaly_*/agent_responses/ under each configured root.
+        for root in self._anomaly_event_dirs:
+            if root.exists():
+                for anomaly_dir in root.glob("Anomaly_*"):
+                    agent_resp_dir = anomaly_dir / "agent_responses"
+                    if agent_resp_dir.is_dir():
+                        response_files.extend(agent_resp_dir.rglob(self._RESPONSE_FILE))
 
         # Deduplicate (in case base_path overlaps with anomaly folders)
         seen: set = set()
