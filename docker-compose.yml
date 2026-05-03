@@ -1,6 +1,19 @@
 services:
   edge-server:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # network: host lets apt-get and pip reach Cntlm proxy on localhost:3128 during build.
+      # No-proxy build: build args will be empty strings (passed by build.sh --no-proxy).
+      network: host
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        no_proxy: ${no_proxy:-}
+    image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
     container_name: allspark-edge-server
     ports:
       - "8080:8080"   # Edge API Server
@@ -8,9 +21,23 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
-      - ./python/config.yaml:/app/python/config.yaml
+      # config.yaml is deployed by build.sh --deploy alongside docker-compose.yml.
+      # On the remote machine it lives at ~/allspark-edge/config.yaml.
+      - ./config.yaml:/app/python/config.yaml:ro
+      # Shared NFS folders — same container-internal path used by all 3 containers.
+      # good_reference_videos/ and Anomaly_*/ subfolders live here.
+      - /net/htvvm662/fs0/anomaly_events:/net/htvvm662/fs0/anomaly_events:rw
     environment:
       - PYTHONUNBUFFERED=1
+      # No-proxy runtime: comment out the proxy vars below if the container
+      # has direct internet access (e.g. cloud VM, local dev without Cntlm).
+      - http_proxy=http://rb-proxy-sl.bosch.com:8080
+      - https_proxy=http://rb-proxy-sl.bosch.com:8080
+      - HTTP_PROXY=http://rb-proxy-sl.bosch.com:8080
+      - HTTPS_PROXY=http://rb-proxy-sl.bosch.com:8080
+      # Bypass proxy for intra-host calls (agent at host.containers.internal:8000).
+      - NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal
+      - no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal
     restart: unless-stopped
     networks:
       - allspark
