@@ -314,8 +314,18 @@ class AgentApiClient:
         AnomalySubmitter has copied the clip into the data folder.
         """
         import os
-        # clip_path is the basename only (enforced by submit_anomaly_to_edge.py)
+        # When anomaly_folder is set (normal Kafka pipeline case), construct the
+        # full NFS path so the video tool can open the file directly without
+        # scanning the entire reference directory.
+        # All three containers mount the NFS share at the same path, so no
+        # translation is needed.
         clip_basename = os.path.basename(request.clip_path)
+        if request.anomaly_folder and clip_basename:
+            clip_ref = os.path.join(request.anomaly_folder, "video_anomaly_data", clip_basename)
+        else:
+            # Fallback (e.g. MQTT/CESAR path where anomaly_folder is not set):
+            # pass basename only and let the tool scan its configured data folder.
+            clip_ref = clip_basename
 
         # --- Infer system context from filename ---
         _HATVAN_PREFIXES = ("ch0_", "ch1_", "ch2_", "ch3_", "ch4_", "ch5_", "ch6_")
@@ -345,14 +355,17 @@ class AgentApiClient:
             f"- Clip Start Timestamp: {request.clip_start_timestamp}\n"
             f"- Error Detected      : {request.error}\n"
             f"- Expected Topic      : {request.expected_topic}\n"
+            f"- Anomaly Folder      : {request.anomaly_folder}\n"
             f"- Log Path            : {request.log_path}\n\n"
             f"## {messages_section_title}\n"
             f"{messages_str}\n\n"
             f"## Task\n"
-            f"Call `analyze_video_frames` with `user_video_file=\"{clip_basename}\"`.\n"
-            f"That is the exact filename to pass — do not modify it, do not prepend "
-            f"any directory path. The tool locates the file by matching the filename "
-            f"against its configured video data folder.\n\n"
+            f"Call `analyze_video_frames` with `user_video_file=\"{clip_ref}\"`.\n"
+            f"Pass that value exactly as shown — it is the full path to the anomaly clip "
+            f"on the shared NFS volume. The tool will open it directly.\n"
+            f"Reference videos for each camera channel are in "
+            f"/net/htvvm662/fs0/anomaly_events/good_reference_videos/ and are selected "
+            f"automatically by channel prefix.\n\n"
             f"After analysis:\n"
             f"1. Describe what is happening in the video during the anomaly period.\n"
             f"2. Cross-reference the {messages_label} to understand the operational context.\n"
