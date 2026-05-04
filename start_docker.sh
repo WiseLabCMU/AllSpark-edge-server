@@ -2,7 +2,11 @@
 # start_docker.sh — Start/stop the AllSpark Edge Server container (direct podman run).
 #
 # Image:  bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
-# Ports:  8080 (Edge API)   8081 (Control Plane UI)
+# Ports:  9080 (Edge API)   9081 (Control Plane UI)   — bound directly via --network host
+#         9090 (Rerun web)  9876 (Rerun gRPC)
+#
+# Note: app listens on 9080/9081 directly (config.yaml port: 9080/9081).
+#       --network host + SELinux label=disable are required on htvvm662.
 #
 # Usage
 # -----
@@ -79,21 +83,21 @@ _start() {
   info "Config : ${SCRIPT_DIR}/config.yaml"
   podman run ${DETACH} \
     --name "${CONTAINER}" \
+    --network host \
     --security-opt label=disable \
-    -v "${SCRIPT_DIR}/config.yaml:/app/python/config.yaml:ro" \
+    --log-driver=json-file \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
     -v "${SCRIPT_DIR}/uploads:/app/uploads" \
     -v "${SCRIPT_DIR}/logs:/app/logs" \
     -v "/net/htvvm662/fs0/anomaly_events:/net/htvvm662/fs0/anomaly_events:rw" \
-    -p 9080:8080 \
-    -p 9081:8081 \
-    -p 9090:9090 \
-    -p 9876:9876 \
     -e http_proxy="${PROXY}" \
     -e https_proxy="${PROXY}" \
     -e HTTP_PROXY="${PROXY}" \
     -e HTTPS_PROXY="${PROXY}" \
-    -e no_proxy="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal" \
-    -e NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal" \
+    -e no_proxy="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" \
+    -e NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" \
+    -e PYTHONUNBUFFERED=1 \
     "${IMAGE}"
   if [[ -n "${DETACH}" ]]; then
     ok "${CONTAINER} started"

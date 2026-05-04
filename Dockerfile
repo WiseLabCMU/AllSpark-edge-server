@@ -25,8 +25,10 @@ COPY third-party/ third-party/
 # Create runtime directories
 RUN mkdir -p uploads/mobile_clients uploads/agent_responses logs/anomalies logs/data/datacapture-rig
 
-# Expose ports: Edge API (8080), Control Plane (8081)
-EXPOSE 8080 8081
+# Expose ports: Edge API (9080), Control Plane (9081)
+# Note: app listens on these ports directly (set in config.yaml);
+# when run with --network host there is no port mapping layer.
+EXPOSE 9080 9081
 
 CMD ["python", "main.py"]
 

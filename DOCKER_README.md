@@ -134,25 +134,28 @@ podman stop allspark-edge-server 2>/dev/null || true
 podman rm   allspark-edge-server 2>/dev/null || true
 podman run -d \
   --name allspark-edge-server \
+  --network host \
   --security-opt label=disable \
   -v /local/home/rbadmin_app1/allspark-edge/config.yaml:/app/python/config.yaml:ro \
   -v /local/home/rbadmin_app1/allspark-edge/uploads:/app/uploads \
   -v /local/home/rbadmin_app1/allspark-edge/logs:/app/logs \
   -v /net/htvvm662/fs0/anomaly_events:/net/htvvm662/fs0/anomaly_events:rw \
-  -p 9080:8080 \
-  -p 9081:8081 \
-  -p 9090:9090 \
-  -p 9876:9876 \
   -e http_proxy=http://rb-proxy-sl.bosch.com:8080 \
   -e https_proxy=http://rb-proxy-sl.bosch.com:8080 \
   -e HTTP_PROXY=http://rb-proxy-sl.bosch.com:8080 \
   -e HTTPS_PROXY=http://rb-proxy-sl.bosch.com:8080 \
-  -e NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal \
-  -e no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal \
+  -e NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
+  -e no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
+  -e PYTHONUNBUFFERED=1 \
   bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
 ```
 
-If the remote has **direct internet access** (no proxy), remove or comment out all four `-e *_proxy` lines.
+> **Network mode:** `--network host` is required so the edge server can reach
+> the agent at `localhost:8000` without bridge networking issues. The app listens
+> directly on host ports 9080/9081/9090/9876 as configured in `config.yaml`.
+>
+> **SELinux:** `--security-opt label=disable` is required on RHEL/Rocky hosts
+> to allow glibc's `mprotect` syscall (exit 127 without this flag).
 
 ### Step 6 — Access the Application
 
@@ -162,9 +165,9 @@ If the remote has **direct internet access** (no proxy), remove or comment out a
 | Control Plane dashboard | http://\<remote-machine-ip\>:9081 |
 | Rerun web viewer | http://\<remote-machine-ip\>:9090 |
 
-> **Port mapping note:** Host ports 9080/9081/9090/9876 map to container ports 8080/8081/9090/9876.
-> The Rerun web viewer (9090) and gRPC proxy (9876) are spawned on-demand by the edge server
-> when "View in Rerun" is clicked on an anomaly card — they show as offline until first use.
+> **Port note:** With `--network host`, the app binds directly on these ports.
+> Ports 9090 (Rerun web) and 9876 (Rerun gRPC) are spawned on-demand when
+> "View in Rerun" is clicked — they show as offline until first use.
 
 Ensure ports `9080`, `9081`, `9090`, and `9876` are open in the remote machine's firewall.
 

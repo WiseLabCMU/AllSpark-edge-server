@@ -292,6 +292,10 @@ class AnomalyResponseStore:
                     val = req_data.get(key)
                     if val:
                         out[key] = val
+                # Expose extra_metadata so the UI can read analysis_mode etc.
+                extra = req_data.get("extra_metadata")
+                if extra and isinstance(extra, dict):
+                    out["extra_metadata"] = extra
             except Exception:
                 pass
 

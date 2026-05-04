@@ -15,11 +15,9 @@ services:
         no_proxy: ${no_proxy:-}
     image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
     container_name: allspark-edge-server
-    ports:
-      - "9080:8080"   # Edge API Server
-      - "9081:8081"   # Control Plane UI
-      - "9090:9090"   # Rerun web viewer
-      - "9876:9876"   # Rerun gRPC proxy
+    # network_mode: host + security_opt label=disable are set below.
+    # Ports bound directly on the host: 9080 (API), 9081 (UI), 9090 (Rerun web), 9876 (Rerun gRPC).
+    # config.yaml port: values must match these numbers exactly.
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
@@ -37,14 +35,11 @@ services:
       - https_proxy=http://rb-proxy-sl.bosch.com:8080
       - HTTP_PROXY=http://rb-proxy-sl.bosch.com:8080
       - HTTPS_PROXY=http://rb-proxy-sl.bosch.com:8080
-      # Bypass proxy for intra-host calls (agent at host.containers.internal:8000).
-      - NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal
-      - no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal
+      # Bypass proxy for intra-host calls (agent is at localhost:8000 via host network).
+      - NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    network_mode: host
+    security_opt:
+      - label=disable
     restart: unless-stopped
-    networks:
-      - allspark
-
-networks:
-  allspark:
-    driver: bridge
 

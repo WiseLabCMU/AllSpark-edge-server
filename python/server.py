@@ -1,3 +1,4 @@
+import asyncio
 import json
 import yaml
 import logging
@@ -64,13 +65,19 @@ DEFAULT_CONFIG = {
 upload_states = {}
 client_connections = {}
 config = {}
+# Set at module load so handle_agent_responses() always has a valid value
+# regardless of whether the module is run directly or imported.
+start_time: float = time.time()
 
 # Agent service singletons – initialised in load_config()
 _agent_client: AgentApiClient | None = None
 _response_store: AnomalyResponseStore | None = None
+# Semaphore serialising agent calls – prevents SQLite "database is locked" when
+# historical replay fires many concurrent requests at the ADK session service.
+_agent_semaphore: asyncio.Semaphore = asyncio.Semaphore(1)
 
 def load_config():
-    global config, _agent_client, _response_store
+    global config, _agent_client, _response_store, _agent_semaphore
     import copy
     config = copy.deepcopy(DEFAULT_CONFIG)
 
@@ -120,6 +127,11 @@ def load_config():
 
     # Initialise agent singletons
     _agent_client = AgentApiClient(config.get("agentConfig", {}))
+    # Limit concurrent agent calls to 1 to prevent SQLite "database is locked"
+    # errors in the ADK session service when historical replay fires many
+    # requests simultaneously.
+    global _agent_semaphore
+    _agent_semaphore = asyncio.Semaphore(1)
     response_path = resolve_path(config.get("agentResponsePath", "uploads/agent_responses/"))
     # Optional extra NFS/anomaly-event roots to scan for agent responses written
     # by the kafka-profiler (e.g. /net/htvvm662/fs0/anomaly_events).
@@ -237,31 +249,39 @@ async def handle_agent_analyze(request):
         extra_metadata=body.get("extra_metadata", {}),
     )
 
-    print(f"[agent/analyze] Received request for clip: {clip_path}")
+    # Generate a request_id immediately so the caller gets a stable handle.
+    import re as _re, uuid as _uuid
+    safe_ts = _re.sub(r"[^a-zA-Z0-9_\-]", "_", anomaly_request.anomaly_time)[:32]
+    request_id = f"{safe_ts}_{_uuid.uuid4().hex[:6]}"
 
-    agent_response = await _agent_client.analyze_anomaly(anomaly_request)
+    print(f"[agent/analyze] Queuing request {request_id} for clip: {clip_path}")
 
-    stored_at = _response_store.save(
-        agent_response,
-        anomaly_request,
-        agent_config=config.get("agentConfig"),
-    )
+    # Fire-and-forget: process under the semaphore in the background so the
+    # caller gets an immediate 202 instead of waiting for the full agent run.
+    # This prevents HTTP timeouts when historical replay queues many requests.
+    async def _run_analysis() -> None:
+        async with _agent_semaphore:
+            agent_response = await _agent_client.analyze_anomaly(anomaly_request)
+        stored_at = _response_store.save(
+            agent_response,
+            anomaly_request,
+            agent_config=config.get("agentConfig"),
+        )
+        print(
+            f"[agent/analyze] Done {request_id}. Status={agent_response.status}. "
+            f"Stored at: {stored_at}"
+        )
 
-    print(
-        f"[agent/analyze] Analysis complete. Status={agent_response.status}. "
-        f"Stored at: {stored_at}"
-    )
+    asyncio.create_task(_run_analysis())
 
     return web.json_response(
         {
-            "success": agent_response.is_success,
-            "request_id": agent_response.request_id,
-            "session_id": agent_response.session_id,
-            "status": agent_response.status,
-            "summary": agent_response.summary,
-            "stored_at": stored_at,
-            "error_message": agent_response.error_message,
-        }
+            "success": True,
+            "request_id": request_id,
+            "status": "queued",
+            "message": "Analysis queued — result will appear on the dashboard when complete.",
+        },
+        status=202,
     )
 
 
@@ -363,6 +383,7 @@ async def handle_agent_responses(request):
             "success": True,
             "count": len(responses),
             "responses": _response_store.list_response_dicts(limit=limit),
+            "server_start_time": start_time,
         }
     )
 

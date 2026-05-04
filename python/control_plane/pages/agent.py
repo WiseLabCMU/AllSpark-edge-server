@@ -484,13 +484,20 @@ def create_page() -> None:
                 "when a new anomaly arrives."
             ).classes("text-sm text-gray-500 mb-4")
 
-            # ── Filter toolbar ────────���───────────────────────────────────────
+            # ── Filter toolbar ────────────────────────────────────────────────
             with ui.row().classes("w-full items-center gap-4 mb-3"):
                 ui.label("Filter:").classes("text-xs font-bold text-gray-500")
                 severity_filter = ui.toggle(
                     ["All", "Critical", "Flagged", "Agent Errors"],
                     value="All",
                 ).props("dense unelevated")
+                ui.label("|").classes("text-gray-300 text-xs")
+                since_restart_toggle = ui.checkbox(
+                    "Since last restart", value=True
+                ).props("dense").classes("text-xs text-gray-600").tooltip(
+                    "Show only anomalies submitted after the edge server last started. "
+                    "Uncheck to view full history including previous runs."
+                )
 
             responses_container = ui.column().classes("w-full gap-3")
 
@@ -502,21 +509,56 @@ def create_page() -> None:
             # Signature of what's currently rendered, used to skip needless
             # re-renders so open ui.expansion drop-downs stay open across polls.
             render_sig: Dict[str, Any] = {"value": None}
+            # Server start time (epoch float) — populated on first API call.
+            # Used by the "Since restart" filter to hide pre-boot history.
+            server_start_time: Dict[str, float] = {"value": 0.0}
 
             # ── Response rendering ────────────────────────────────────────────
 
             def _filter_responses(responses: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 mode = severity_filter.value or "All"
+                result = responses
+
+                # Since-restart filter: hide anomalies submitted before the server booted.
+                # Uses the request_id prefix (ISO timestamp) or stored_at filename timestamp
+                # rather than file mtime — mtime is unreliable after container restarts.
+                boot_ts = server_start_time["value"]
+                if since_restart_toggle.value and boot_ts > 0:
+                    from datetime import datetime, timezone
+                    import re as _re
+
+                    def _submitted_epoch(r: Dict[str, Any]) -> float:
+                        """Return the time this response was written (submission time, not event time)."""
+                        # created_at is set to datetime.now() when the agent saves the response
+                        ca = r.get("created_at", "")
+                        if ca:
+                            try:
+                                from datetime import datetime, timezone
+                                dt = datetime.fromisoformat(ca.replace("Z", "+00:00"))
+                                return dt.timestamp()
+                            except Exception:
+                                pass
+                        # Fallback: mtime of the stored_at directory on NFS
+                        sp = r.get("stored_at", "")
+                        if sp:
+                            try:
+                                import os
+                                return os.path.getmtime(sp)
+                            except Exception:
+                                pass
+                        return boot_ts  # unknown — let it through
+                    result = [r for r in result if _submitted_epoch(r) >= boot_ts]
+
                 if mode == "All":
-                    return responses
+                    return result
                 target = {
                     "Critical":      "critical",
                     "Flagged":       "flagged",
                     "Agent Errors":  "agent_error",
                 }.get(mode)
                 if not target:
-                    return responses
-                return [r for r in responses if _severity_for(r)["level"] == target]
+                    return result
+                return [r for r in result if _severity_for(r)["level"] == target]
 
             def _render_responses(responses: List[Dict[str, Any]], force: bool = False) -> None:
                 visible = _filter_responses(responses)
@@ -537,6 +579,7 @@ def create_page() -> None:
                 # would collapse any drop-down the engineer has opened.
                 sig = (
                     severity_filter.value,
+                    since_restart_toggle.value,
                     tuple(r.get("request_id", "") for r in visible),
                     tuple(sorted(new_ids)),
                 )
@@ -573,6 +616,9 @@ def create_page() -> None:
                 expected_topic = r.get("expected_topic", "")
                 video_clip_url = r.get("video_clip_url", "")
                 request_id = r.get("request_id", "")
+                # analysis_mode is stored in extra_metadata by kafka-profiler
+                extra_meta = r.get("extra_metadata", {}) or {}
+                analysis_mode = extra_meta.get("analysis_mode", "")
 
                 opt = AnomalyOption(
                     session_id=session_id,
@@ -609,6 +655,22 @@ def create_page() -> None:
                             rel = _relative_time(anomaly_time)
                             if rel:
                                 ui.label(rel).classes("text-xs text-gray-500 italic")
+                            # Analysis mode badge (historical vs live)
+                            if analysis_mode == "historical":
+                                ui.html(
+                                    '<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 '
+                                    'rounded text-[10px] font-bold tracking-wide mt-1">'
+                                    '🕘 HISTORICAL</span>'
+                                ).tooltip(
+                                    "Submitted during the lookback drain at profiler startup "
+                                    "(replayed from Kafka history, not a live event)"
+                                )
+                            elif analysis_mode == "live":
+                                ui.html(
+                                    '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 '
+                                    'rounded text-[10px] font-bold tracking-wide mt-1">'
+                                    '🟢 LIVE</span>'
+                                ).tooltip("Detected in real-time by the Kafka profiler")
 
                         # ── CENTER: machine, chips, summary preview ───────
                         with ui.column().classes("flex-1 min-w-0 gap-1"):
@@ -728,6 +790,11 @@ def create_page() -> None:
                 responses = data.get("responses", [])
                 current_responses[:] = responses
 
+                # Update server boot time (used by since-restart filter)
+                new_boot = data.get("server_start_time", 0.0)
+                if new_boot and new_boot != server_start_time["value"]:
+                    server_start_time["value"] = float(new_boot)
+
                 # Diff against last seen request_ids to highlight new anomalies
                 fetched_ids = {r.get("request_id", "") for r in responses if r.get("request_id")}
                 if first_render["value"]:
@@ -762,6 +829,7 @@ def create_page() -> None:
                 _render_responses(current_responses, force=True)
 
             severity_filter.on_value_change(_on_filter_change)
+            since_restart_toggle.on_value_change(_on_filter_change)
             refresh_btn.on_click(_refresh_responses)
             ui.timer(_POLL_INTERVAL_SEC, _refresh_responses)
             ui.timer(0.1, _refresh_responses, once=True)
