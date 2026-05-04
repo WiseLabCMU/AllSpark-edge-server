@@ -240,13 +240,15 @@ class AgentApiClient:
                 headers={"Content-Type": "application/json"},
                 json=payload,
             ) as resp:
+                body = await resp.text()
                 if resp.status == 200:
                     logger.info("Agent session initialised: %s", session_id)
                 else:
                     logger.warning(
-                        "Session init returned HTTP %s for session %s",
+                        "Session init returned HTTP %s for session %s — %s",
                         resp.status,
                         session_id,
+                        body[:500],
                     )
         except Exception as exc:
             logger.warning("Exception initialising agent session: %s", exc)
@@ -264,8 +266,19 @@ class AgentApiClient:
                 headers={"Content-Type": "application/json"},
                 json=payload,
             ) as resp:
-                resp.raise_for_status()
-                raw = await resp.json(content_type=None)
+                # Read body as text first so we can log ADK error detail
+                # (Python traceback) on 4xx/5xx before raising.
+                body = await resp.text()
+                if not resp.ok:
+                    msg = f"HTTP error {resp.status}: {resp.reason} — {body[:2000]}"
+                    logger.error("Agent API error for session %s: %s", session_id, msg)
+                    return False, None, msg
+                # Parse JSON from the already-consumed text body.
+                import json as _json
+                try:
+                    raw = _json.loads(body)
+                except _json.JSONDecodeError:
+                    raw = body
                 logger.info(
                     "Agent responded with HTTP %s for session %s",
                     resp.status,

@@ -19,6 +19,10 @@ def create_page():
         config = load_config()
         cp_config = config.get('control_plane', {})
         rerun_host = cp_config.get('rerunHost', '127.0.0.1')
+        # rerunExternalHost is the hostname the *browser* will use — must be
+        # resolvable from the client machine. Falls back to rerunHost so
+        # localhost/dev setups still work without adding the field.
+        rerun_external_host = cp_config.get('rerunExternalHost', rerun_host)
         rerun_port = cp_config.get('rerunPort', 9090)
         # rerun's embedded gRPC server always listens on 9876 (the SDK
         # default). The web viewer needs to be told to auto-connect to
@@ -26,8 +30,8 @@ def create_page():
         # parameter – otherwise it just shows the "welcome" screen with
         # no data.
         rerun_grpc_port = cp_config.get('rerunGrpcPort', 9876)
-        rerun_grpc_uri = f"rerun+http://{rerun_host}:{rerun_grpc_port}/proxy"
-        viewer_base = f"http://{rerun_host}:{rerun_port}"
+        rerun_grpc_uri = f"rerun+http://{rerun_external_host}:{rerun_grpc_port}/proxy"
+        viewer_base = f"http://{rerun_external_host}:{rerun_port}"
         viewer_with_data = f"{viewer_base}/?url={quote(rerun_grpc_uri, safe='')}"
 
         with menu('Data Plane: Rerun.io', full_width=True, hide_title=True):

@@ -16,8 +16,10 @@ services:
     image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
     container_name: allspark-edge-server
     ports:
-      - "8080:8080"   # Edge API Server
-      - "8081:8081"   # Control Plane UI
+      - "9080:8080"   # Edge API Server
+      - "9081:8081"   # Control Plane UI
+      - "9090:9090"   # Rerun web viewer
+      - "9876:9876"   # Rerun gRPC proxy
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs

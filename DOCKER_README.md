@@ -124,33 +124,31 @@ The remote machine uses **Podman**. SSH in and run:
 ```bash
 ssh rbadmin_app1@htvvm662.emea.bosch.com   # via jump host if needed
 
-# Login to registry (once)
-podman login bcr2.inside.bosch.cloud
-
-# Pull the image
-podman pull bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
-
-# Run with podman-compose (recommended — volume paths already configured)
-cd /local/home/rbadmin_app1/allspark-edge
-podman-compose up -d
-
-# Check logs
-podman-compose logs -f
+# Use pull_containers.sh from allspark-hatvan-pipeline (recommended)
+./pull_containers.sh --only=edge
 ```
 
 Or run directly with podman:
 ```bash
-podman run --rm \
+podman stop allspark-edge-server 2>/dev/null || true
+podman rm   allspark-edge-server 2>/dev/null || true
+podman run -d \
+  --name allspark-edge-server \
   --security-opt label=disable \
   -v /local/home/rbadmin_app1/allspark-edge/config.yaml:/app/python/config.yaml:ro \
   -v /local/home/rbadmin_app1/allspark-edge/uploads:/app/uploads \
   -v /local/home/rbadmin_app1/allspark-edge/logs:/app/logs \
-  -p 8080:8080 \
-  -p 8081:8081 \
+  -v /net/htvvm662/fs0/anomaly_events:/net/htvvm662/fs0/anomaly_events:rw \
+  -p 9080:8080 \
+  -p 9081:8081 \
+  -p 9090:9090 \
+  -p 9876:9876 \
   -e http_proxy=http://rb-proxy-sl.bosch.com:8080 \
   -e https_proxy=http://rb-proxy-sl.bosch.com:8080 \
   -e HTTP_PROXY=http://rb-proxy-sl.bosch.com:8080 \
   -e HTTPS_PROXY=http://rb-proxy-sl.bosch.com:8080 \
+  -e NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal \
+  -e no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,host.containers.internal \
   bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
 ```
 
@@ -160,10 +158,15 @@ If the remote has **direct internet access** (no proxy), remove or comment out a
 
 | Service | URL |
 |---|---|
-| Edge API | http://\<remote-machine-ip\>:8080 |
-| Control Plane dashboard | http://\<remote-machine-ip\>:8081 |
+| Edge API | http://\<remote-machine-ip\>:9080 |
+| Control Plane dashboard | http://\<remote-machine-ip\>:9081 |
+| Rerun web viewer | http://\<remote-machine-ip\>:9090 |
 
-Ensure ports `8080` and `8081` are open in the remote machine's firewall.
+> **Port mapping note:** Host ports 9080/9081/9090/9876 map to container ports 8080/8081/9090/9876.
+> The Rerun web viewer (9090) and gRPC proxy (9876) are spawned on-demand by the edge server
+> when "View in Rerun" is clicked on an anomaly card — they show as offline until first use.
+
+Ensure ports `9080`, `9081`, `9090`, and `9876` are open in the remote machine's firewall.
 
 ---
 
@@ -171,8 +174,9 @@ Ensure ports `8080` and `8081` are open in the remote machine's firewall.
 
 | File / Directory | Location on remote | Mount point inside container | Deployed by |
 |---|---|---|---|
-| `config.yaml` | `~/allspark-edge/config.yaml` | `/app/python/config.yaml` | `build.sh` (default) |
-| `docker-compose.yml` | `~/allspark-edge/docker-compose.yml` | — | `build.sh` (default) |
+| `config.yaml` | `~/allspark-edge/config.yaml` | `/app/python/config.yaml` | `build_all.sh` (allspark-hatvan-pipeline) |
+| `docker-compose.yml` | `~/allspark-edge/docker-compose.yml` | — | `build_all.sh` (allspark-hatvan-pipeline) |
 | `uploads/` | `~/allspark-edge/uploads/` | `/app/uploads/` | Created by container |
 | `logs/` | `~/allspark-edge/logs/` | `/app/logs/` | Created by container |
+| NFS anomaly events | `/net/htvvm662/fs0/anomaly_events` | `/net/htvvm662/fs0/anomaly_events` | Pre-existing NFS mount |
 | `keys/` *(optional)* | `~/allspark-edge/keys/` | `/app/keys/` | Manual — only needed for iOS mobile app (HTTPS/WSS) |
