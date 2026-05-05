@@ -60,28 +60,33 @@ def create_page():
                 'text-xs font-mono text-gray-400 mb-2'
             )
 
-            # The iframe embeds the rerun web viewer with an explicit
-            # ``?url=`` query param so it auto-connects to our gRPC proxy.
-            # A cache-buster ``_t`` is also appended so that when a
-            # per-anomaly viewer is relaunched on the same port, the
-            # browser actually re-requests the page (rerun's SPA caches
-            # session state aggressively otherwise).
+            # Rerun's tiny-http server sends X-Frame-Options headers that
+            # prevent iframe embedding. Open the viewer in a new browser tab
+            # instead, and auto-trigger the open on page load.
             import time as _time
             cache_buster = int(_time.time())
-            iframe_src = f"{viewer_with_data}&_t={cache_buster}"
-            ui.html(f'''
-                <iframe src="{iframe_src}" class="w-full"
-                        style="height: calc(100vh - 240px); border: 1px solid #ccc; border-radius: 8px;"
-                        onerror="this.style.display='none'"
-                        onload="document.getElementById('rerun-fallback').style.display='none'">
-                    Your browser does not support iframes, or the Rerun server is offline.
-                </iframe>
-                <div id="rerun-fallback" style="text-align:center; padding:40px; color:#888;">
-                    <p>If the Rerun viewer does not load, ensure the Rerun server is running:</p>
-                    <code style="background:#f0f0f0; padding:8px 16px; border-radius:4px; display:inline-block; margin-top:8px;">
-                        python control_plane/rerun_server.py --port {rerun_port}
-                    </code>
-                </div>
-            ''').classes('w-full')
+            viewer_url = f"{viewer_with_data}&_t={cache_buster}"
+            ui.run_javascript(f"window.open('{viewer_url}', '_blank')")
+
+            with ui.card().classes('w-full mt-4').style(
+                'background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;'
+                'padding:40px; text-align:center;'
+            ):
+                ui.icon('open_in_new', size='48px').classes('text-blue-400 mb-4')
+                ui.label('Rerun Viewer opened in a new tab').classes(
+                    'text-xl font-semibold text-gray-700 mb-2'
+                )
+                ui.label(
+                    'The Rerun web viewer cannot be embedded due to browser security '
+                    'restrictions (X-Frame-Options). It has been opened in a new tab automatically.'
+                ).classes('text-sm text-gray-500 mb-6 max-w-lg mx-auto')
+                ui.button(
+                    'Open Rerun Viewer',
+                    icon='open_in_new',
+                    on_click=lambda: ui.run_javascript(f"window.open('{viewer_url}', '_blank')"),
+                ).props('color=primary unelevated').classes('mb-3')
+                ui.label(viewer_url).classes(
+                    'text-xs font-mono text-gray-400 break-all max-w-lg mx-auto'
+                )
 
 

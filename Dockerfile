@@ -10,7 +10,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     build-essential \
     python3-dev \
     libffi-dev \
-    libavahi-compat-libdnssd-dev
+    libavahi-compat-libdnssd-dev \
+    ffmpeg
 
 # Copy and install Python dependencies
 COPY python/requirements.txt requirements.txt

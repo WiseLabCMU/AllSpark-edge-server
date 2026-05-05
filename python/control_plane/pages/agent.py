@@ -272,11 +272,14 @@ def _launch_rerun(anomaly_folder: str = "") -> None:
         ui.notify("Launching Rerun viewer…", type="info")
         cmd = [sys.executable, rerun_server, "--port", str(rerun_port)]
 
+    _rerun_log_path = "/tmp/rerun_server.log"
+    rerun_log_fh = open(_rerun_log_path, "w")
     subprocess.Popen(
         cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=rerun_log_fh,
+        stderr=rerun_log_fh,
     )
+    print(f"[rerun] subprocess log: {_rerun_log_path}", flush=True)
 
     # 3. Wait for the server to start serving (max ~5 s)
     if _wait_for_port("127.0.0.1", rerun_port, timeout=5.0):

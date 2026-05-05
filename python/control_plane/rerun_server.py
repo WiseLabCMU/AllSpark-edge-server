@@ -121,9 +121,10 @@ def _ensure_rerun_compatible_video(video_path: Path) -> Path:
     ``ffmpeg`` is unavailable or transcoding fails.
     """
     codec = _probe_codec(video_path)
-    if codec is None or codec in _RERUN_SUPPORTED_CODECS:
+    if codec is not None and codec in _RERUN_SUPPORTED_CODECS:
         return video_path
 
+    # codec is None (ffprobe unavailable) or codec is unsupported — transcode
     cached = video_path.with_suffix(".h264.mp4")
     # If the cache already exists and is newer than the source, reuse it.
     if cached.exists() and cached.stat().st_mtime >= video_path.stat().st_mtime:
@@ -551,19 +552,36 @@ class RerunAnomalyViewer:
             return
 
         # 1. Discover artefacts
+        # Support both naming conventions:
+        #   video_logs/        — legacy/manual layout
+        #   video_anomaly_data/ — created by kafka_error_event_monitor.py
         videos: List[Path] = []
-        if (folder / "video_logs").exists():
-            for vid in sorted((folder / "video_logs").glob("*.mp4")):
+        _video_dir = next(
+            (folder / d for d in ("video_logs", "video_anomaly_data")
+             if (folder / d).exists()),
+            None,
+        )
+        if _video_dir is not None:
+            for vid in sorted(_video_dir.glob("*.mp4")):
                 # Skip cached H.264 transcodes (created by a previous run);
                 # _ensure_rerun_compatible_video() will reuse them implicitly.
                 if vid.stem.endswith(".h264"):
                     continue
                 videos.append(vid)
         kafka_files: List[Path] = []
-        if (folder / "kafka_logs").exists():
+        # Support both naming conventions:
+        #   kafka_logs/        — legacy/manual layout
+        #   kafka_anomaly_data/ — created by kafka_error_event_monitor.py
+        _kafka_dir = next(
+            (folder / d for d in ("kafka_logs", "kafka_anomaly_data")
+             if (folder / d).exists()),
+            None,
+        )
+        if _kafka_dir is not None:
             kafka_files = sorted(
-                list((folder / "kafka_logs").glob("*.csv"))
-                + list((folder / "kafka_logs").glob("*.txt"))
+                list(_kafka_dir.glob("*.csv"))
+                + list(_kafka_dir.glob("*.txt"))
+                + list(_kafka_dir.glob("*.log"))
             )
         response_files = sorted(
             (folder / "agent_responses").rglob("response.json")
@@ -730,20 +748,26 @@ class RerunAnomalyViewer:
     @staticmethod
     def _parse_kafka_log(path: Path) -> Tuple[List[dict], Optional[float]]:
         """
-        Parse a Kafka/process-log CSV (comma OR semicolon delimited).
+        Parse a Kafka/process-log file.  Handles two formats:
+
+        1. CSV (comma or semicolon delimited) with header row
+        2. kafka_payload_snapshot.log format: ``topic=X key=Y value=Z``
+           written by kafka_logger.write_message().  Each line carries a
+           timestamp embedded in the JSON value field.
 
         Returns a tuple of (rows, error_epoch):
           rows: list of {epoch, topic, raw, is_error}
           error_epoch: epoch seconds of the FIRST error row, or None.
-
-        A row is considered an error when:
-          • the second column ('topic'/'process') equals 'error', OR
-          • the resultState column is non-empty and not in {'ok', 'OK'}, OR
-          • the resultCode column is non-empty.
         """
         text = path.read_text(encoding="utf-8", errors="replace")
         if not text.strip():
             return [], None
+
+        # ---- Detect kafka_payload_snapshot format: first non-empty line
+        # starts with "topic=" (no CSV header) ----
+        first_line = next((l for l in text.splitlines() if l.strip()), "")
+        if first_line.startswith("topic="):
+            return RerunAnomalyViewer._parse_kv_snapshot(text)
 
         # Auto-detect delimiter from the header line
         header_line = text.splitlines()[0]
@@ -822,24 +846,100 @@ class RerunAnomalyViewer:
     @staticmethod
     def _parse_epoch_from_folder_name(name: str) -> Optional[float]:
         """
-        Extract an epoch from folder names like ``anomaly_2026-04-02T20-49-04``.
+        Extract an epoch from folder names.  Handles two formats:
+          • ``anomaly_2026-04-02T20-49-04``  (dashes between parts)
+          • ``Anomaly_20260429T043922Z``      (compact, as written by kafka_error_event_monitor)
         Returns None if no timestamp pattern is found.
         """
+        # Format 1: YYYY-MM-DDTHH-MM-SS
         m = re.search(r"(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})", name)
-        if not m:
-            return None
-        try:
-            iso = f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}"
-            return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=timezone.utc
-            ).timestamp()
-        except ValueError:
-            return None
+        if m:
+            try:
+                iso = f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}"
+                return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S").replace(
+                    tzinfo=timezone.utc
+                ).timestamp()
+            except ValueError:
+                pass
+        # Format 2: YYYYMMDDTHHMMSS[Z]
+        m = re.search(r"(\d{8})T(\d{6})Z?", name)
+        if m:
+            try:
+                return datetime.strptime(
+                    m.group(1) + m.group(2), "%Y%m%d%H%M%S"
+                ).replace(tzinfo=timezone.utc).timestamp()
+            except ValueError:
+                pass
+        return None
+
+    @staticmethod
+    def _parse_kv_snapshot(text: str) -> Tuple[List[dict], Optional[float]]:
+        """
+        Parse ``kafka_payload_snapshot.log`` lines of the form::
+
+            topic=errorevent key=None value={"ts_ms": 1234567890, ...}
+
+        Extracts the Kafka message timestamp from the JSON value field
+        (key ``ts_ms`` in epoch-milliseconds, or ``timestamp`` / ``ts``
+        in epoch-seconds or ISO-8601).  Error rows are those on the
+        ``errorevent`` topic or those whose value contains an error code.
+        """
+        rows: List[dict] = []
+        error_epoch: Optional[float] = None
+        _kv_re = re.compile(r"^topic=(\S+)\s+key=\S+\s+value=(.+)$")
+
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            m = _kv_re.match(line)
+            if not m:
+                continue
+            topic = m.group(1)
+            raw_value = m.group(2)
+
+            # Extract timestamp from JSON value
+            epoch: Optional[float] = None
+            try:
+                val = json.loads(raw_value)
+                if isinstance(val, dict):
+                    ts_ms = val.get("ts_ms") or val.get("kafka_ts_ms")
+                    if ts_ms:
+                        epoch = float(ts_ms) / 1000.0
+                    elif "timestamp" in val:
+                        ts = val["timestamp"]
+                        if isinstance(ts, (int, float)) and ts > 1e10:
+                            epoch = float(ts) / 1000.0
+                        elif isinstance(ts, (int, float)):
+                            epoch = float(ts)
+                        elif isinstance(ts, str):
+                            epoch = RerunAnomalyViewer._parse_epoch(ts)
+                    elif "ts" in val:
+                        ts = val["ts"]
+                        epoch = float(ts) / 1000.0 if float(ts) > 1e10 else float(ts)
+                    # TFM machine messages: timestamp is nested under MessageHeader
+                    if epoch is None:
+                        mh_ts = (val.get("MessageHeader") or {}).get("TimeStamp")
+                        if mh_ts:
+                            epoch = RerunAnomalyViewer._parse_epoch(str(mh_ts))
+            except Exception:
+                pass
+
+            if epoch is None:
+                continue
+
+            is_error = topic.lower() in ("errorevent", "error")
+            rows.append({"epoch": epoch, "topic": topic, "raw": line, "is_error": is_error})
+            if is_error and error_epoch is None:
+                error_epoch = epoch
+
+        return rows, error_epoch
 
     @staticmethod
     def _extract_channel(filename: str) -> str:
-        """``ch3_pellet_feeder_error.mp4`` → ``ch3``; fallback: filename stem."""
-        m = re.match(r"(ch\d+)_", filename, re.IGNORECASE)
+        """``ch3_pellet_feeder_error.mp4`` / ``clip_ch2_2026_...mp4`` → ``ch2``; fallback: filename stem."""
+        # Matches ch<N> anywhere in the filename (handles both "ch3_foo.mp4" and "clip_ch2_ts.mp4")
+        m = re.search(r"(ch\d+)", filename, re.IGNORECASE)
         if m:
             return m.group(1).lower()
         return Path(filename).stem.split("_")[0]
