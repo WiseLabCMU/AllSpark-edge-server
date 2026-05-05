@@ -58,7 +58,7 @@ done
 _check() {
   if [[ ! -f "${SCRIPT_DIR}/config.yaml" ]]; then
     err "config.yaml not found at ${SCRIPT_DIR}"
-    err "Deploy it first:  build_all.sh --deploy-only --only=edge  (on dev machine)"
+    err "Deploy it first:  build_push_hatvan_containers.sh --deploy-only --only=edge  (on dev machine)"
     exit 1
   fi
   mkdir -p "${SCRIPT_DIR}/uploads" "${SCRIPT_DIR}/logs"

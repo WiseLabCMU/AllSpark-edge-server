@@ -334,8 +334,9 @@ class RerunAnomalyViewer:
             connect_to=server_uri,
             open_browser=False,
             web_port=self._web_port,
+            bind="0.0.0.0",
         )
-        logger.info("Rerun web viewer serving on port %d", self._web_port)
+        logger.info("Rerun web viewer serving on 0.0.0.0:%d", self._web_port)
 
         # Load data first so we know how many topics there are, THEN send the
         # blueprint with a properly-scaled Y axis. (Per-anomaly mode only.)
@@ -346,7 +347,7 @@ class RerunAnomalyViewer:
             self._send_blueprint(rr, rrb)
             self._load_all_responses(rr)
 
-        logger.info("Rerun viewer ready – open http://127.0.0.1:%d", self._web_port)
+        logger.info("Rerun viewer ready – open http://0.0.0.0:%d  (or use rerunExternalHost from config)", self._web_port)
 
     # ------------------------------------------------------------------
     # Blueprints

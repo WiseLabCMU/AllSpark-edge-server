@@ -177,8 +177,8 @@ Ensure ports `9080`, `9081`, `9090`, and `9876` are open in the remote machine's
 
 | File / Directory | Location on remote | Mount point inside container | Deployed by |
 |---|---|---|---|
-| `config.yaml` | `~/allspark-edge/config.yaml` | `/app/python/config.yaml` | `build_all.sh` (allspark-hatvan-pipeline) |
-| `docker-compose.yml` | `~/allspark-edge/docker-compose.yml` | — | `build_all.sh` (allspark-hatvan-pipeline) |
+| `config.yaml` | `~/allspark-edge/config.yaml` | `/app/python/config.yaml` | `build_push_hatvan_containers.sh` (allspark-hatvan-pipeline) |
+| `docker-compose.yml` | `~/allspark-edge/docker-compose.yml` | — | `build_push_hatvan_containers.sh` (allspark-hatvan-pipeline) |
 | `uploads/` | `~/allspark-edge/uploads/` | `/app/uploads/` | Created by container |
 | `logs/` | `~/allspark-edge/logs/` | `/app/logs/` | Created by container |
 | NFS anomaly events | `/net/htvvm662/fs0/anomaly_events` | `/net/htvvm662/fs0/anomaly_events` | Pre-existing NFS mount |
