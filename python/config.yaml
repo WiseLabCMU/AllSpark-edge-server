@@ -1,0 +1,51 @@
+mobile_client:
+  hostname: 0.0.0.0
+  port: 9080
+  autoUpload: true
+  serviceName: AllSpark Server
+  keyFile: keys/test-private.key
+  certFile: keys/test-public.crt
+  uploadPath: uploads/
+  clientUploadsPath: uploads/mobile_clients/
+  agentResponsePath: uploads/agent_responses/
+  # Extra directories to scan for agent responses written by kafka-profiler.
+  # Each entry is an absolute path to a folder containing Anomaly_*/ subfolders.
+  anomalyEventDirs:
+    - /net/htvvm662/fs0/anomaly_events
+  keepAliveIntervalMs: 5000
+  agentConfig:
+    agent_url: http://10.76.8.217:8000/run
+    agent_app_name: allspark_agent
+    agent_user_id: user
+    agent_session_id: edge_session
+    agent_timeout: 900
+    agent_init_message: Hey, can you help me do some analysis?
+  clientConfig:
+    videoFormat: mp4
+    audioFormat: wav
+    depthFormat: png
+    poseFormat: json
+    timestampFormat: txt
+    fps: 30.0
+    videoChunkDurationMs: 10000
+    videoBufferMaxMB: 16000
+    communicationsPolicy:
+      wifi: true
+      cellular: true
+      ethernet: true
+      usb: true
+      bluetooth: false
+      airdrop: false
+      nfc: false
+      uwb: false
+      satellite: false
+control_plane:
+  port: 9081
+  storageSecret: allspark-secret
+  rerunHost: localhost                   # internal TCP probe only — keep as localhost; rerunExternalHost controls the browser-facing URL
+  rerunExternalHost: 10.76.8.217        # browser-facing hostname — must be reachable from the client
+  rerunPort: 9090
+  rerunGrpcPort: 9876
+  logPaths:
+    anomalyLogs: logs/anomalies/
+    rigLogs: logs/data/datacapture-rig
