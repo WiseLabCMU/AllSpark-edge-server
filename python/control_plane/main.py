@@ -47,7 +47,8 @@ def _allowed_clip_roots() -> list[Path]:
         os.path.join(os.path.dirname(__file__), '..', '..', 'uploads')
     ))
     roots.append(uploads)
-    # anomalyEventDirs from config (NFS paths)
+    # anomalyEventDirs from config (NFS paths) — keep as-is, don't resolve()
+    # since NFS mounts may not resolve to the same canonical path
     for d in mc.get("anomalyEventDirs", []):
         roots.append(Path(d))
     return roots
@@ -55,22 +56,36 @@ def _allowed_clip_roots() -> list[Path]:
 
 def _ensure_h264_sidecar(clip: Path) -> Path:
     """Return an H.264-encoded sidecar for *clip*, creating it if needed."""
+    import logging
+    _log = logging.getLogger(__name__)
+
+    # Already an H.264 sidecar — serve directly
+    if clip.name.endswith(".h264.mp4"):
+        _log.info("clip-video: already H.264 sidecar, serving directly: %s", clip.name)
+        return clip
+
     sidecar = clip.with_name(clip.stem + ".h264.mp4")
     if sidecar.exists():
+        _log.info("clip-video: using cached sidecar: %s", sidecar.name)
         return sidecar
+
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        return clip  # ffmpeg unavailable — serve original and hope for the best
+        _log.warning("clip-video: ffmpeg not found, serving original: %s", clip.name)
+        return clip
     try:
+        _log.info("clip-video: transcoding %s → %s", clip.name, sidecar.name)
         subprocess.run(
             [ffmpeg, "-y", "-v", "error", "-i", str(clip),
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
              "-movflags", "+faststart", str(sidecar)],
             check=True, timeout=300,
         )
+        _log.info("clip-video: transcode complete: %s", sidecar.name)
         return sidecar
-    except Exception:
-        return clip  # transcode failed — serve original
+    except Exception as exc:
+        _log.warning("clip-video: transcode failed for %s: %s — serving original", clip.name, exc)
+        return clip
 
 
 @app.get("/api/clip-video")
@@ -82,21 +97,26 @@ async def clip_video(path: str) -> Response:
     except Exception:
         return Response(status_code=400, content="Invalid path encoding")
 
-    clip = Path(raw).resolve()
+    clip = Path(raw)
 
-    # Security: must be inside an allowed root
+    # Security: must start with an allowed root (string prefix match handles NFS)
     allowed = _allowed_clip_roots()
     if not any(_is_relative_to(clip, r) for r in allowed):
-        return Response(status_code=403, content="Path not in allowed directories")
+        # Also try after resolving symlinks on both sides
+        clip_resolved = clip.resolve()
+        allowed_resolved = [r.resolve() for r in allowed]
+        if not any(_is_relative_to(clip_resolved, r) for r in allowed_resolved):
+            return Response(status_code=403, content="Path not in allowed directories")
 
     if not clip.exists():
         return Response(status_code=404, content="Clip not found")
 
-    serve = _ensure_h264_sidecar(clip)
+    # Run transcode in a thread so it doesn't block the async event loop
+    import asyncio
+    serve = await asyncio.to_thread(_ensure_h264_sidecar, clip)
     return FileResponse(
         path=str(serve),
         media_type="video/mp4",
-        headers={"Accept-Ranges": "bytes"},
     )
 
 

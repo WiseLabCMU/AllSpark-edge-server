@@ -75,6 +75,9 @@ _response_store: AnomalyResponseStore | None = None
 # Semaphore serialising agent calls – prevents SQLite "database is locked" when
 # historical replay fires many concurrent requests at the ADK session service.
 _agent_semaphore: asyncio.Semaphore = asyncio.Semaphore(1)
+# Strong references to in-flight background tasks so Python's GC cannot collect
+# them before they complete (asyncio.create_task() only keeps a weak ref).
+_pending_tasks: set[asyncio.Task] = set()
 
 def load_config():
     global config, _agent_client, _response_store, _agent_semaphore
@@ -263,19 +266,83 @@ async def handle_agent_analyze(request):
     # caller gets an immediate 202 instead of waiting for the full agent run.
     # This prevents HTTP timeouts when historical replay queues many requests.
     async def _run_analysis() -> None:
-        async with _agent_semaphore:
-            agent_response = await _agent_client.analyze_anomaly(anomaly_request)
-        stored_at = _response_store.save(
-            agent_response,
-            anomaly_request,
-            agent_config=config.get("agentConfig"),
-        )
-        print(
-            f"[agent/analyze] Done {request_id}. Status={agent_response.status}. "
-            f"Stored at: {stored_at}"
-        )
+        # ------------------------------------------------------------------
+        # If no clip yet, wait efficiently for NVR capture to finish before
+        # acquiring the agent semaphore.  Strategy:
+        #   1. Sleep for clip_duration_seconds (the earliest the clip can exist).
+        #   2. Then poll every poll_interval_seconds using asyncio.sleep (zero
+        #      CPU between wakes — no busy-polling).
+        #   3. Give up after clip_wait_timeout_seconds and let the agent run
+        #      without a clip (it will use kafka log context only).
+        # This wait runs OUTSIDE the semaphore so all queued requests can wait
+        # for their clips concurrently while only one calls the agent at a time.
+        # ------------------------------------------------------------------
+        try:
+            if not anomaly_request.clip_path and anomaly_request.anomaly_folder:
+                _nvr_cfg   = config.get("nvrWaitConfig", {})
+                _initial   = float(_nvr_cfg.get("clip_duration_seconds",    120))
+                _interval  = float(_nvr_cfg.get("poll_interval_seconds",     10))
+                _timeout   = float(_nvr_cfg.get("clip_wait_timeout_seconds", 360))
+                _video_dir = Path(anomaly_request.anomaly_folder) / "video_anomaly_data"
+                print(
+                    f"[agent/analyze] {request_id}: clip_path empty — "
+                    f"sleeping {_initial:.0f}s then polling every {_interval:.0f}s "
+                    f"(max {_timeout:.0f}s) for clip in {_video_dir}"
+                )
+                await asyncio.sleep(_initial)
+                _loop     = asyncio.get_running_loop()
+                _deadline = _loop.time() + (_timeout - _initial)
+                _found_clip = ""
 
-    asyncio.create_task(_run_analysis())
+                def _scan_for_clip() -> str:
+                    """Blocking NFS glob — runs in a thread pool to avoid stalling the event loop."""
+                    if not _video_dir.exists():
+                        return ""
+                    for _pat in ("clip_ch*.h264.mp4", "clip_ch*.mp4"):
+                        _hits = sorted(_video_dir.glob(_pat))
+                        if _hits:
+                            return str(_hits[0])
+                    return ""
+
+                while _loop.time() < _deadline:
+                    _found_clip = await asyncio.to_thread(_scan_for_clip)
+                    if _found_clip:
+                        break
+                    await asyncio.sleep(_interval)
+
+                if _found_clip:
+                    print(f"[agent/analyze] {request_id}: clip ready → {Path(_found_clip).name}")
+                    anomaly_request.clip_path = _found_clip
+                else:
+                    print(
+                        f"[agent/analyze] {request_id}: timed out waiting for clip — "
+                        f"proceeding without video"
+                    )
+
+            async with _agent_semaphore:
+                agent_response = await _agent_client.analyze_anomaly(anomaly_request)
+            stored_at = _response_store.save(
+                agent_response,
+                anomaly_request,
+                agent_config=config.get("agentConfig"),
+            )
+            print(
+                f"[agent/analyze] Done {request_id}. Status={agent_response.status}. "
+                f"Stored at: {stored_at}"
+            )
+        except asyncio.CancelledError:
+            print(f"[agent/analyze] {request_id}: task cancelled", flush=True)
+            raise  # must re-raise so asyncio can clean up properly
+        except Exception as _exc:
+            print(
+                f"[agent/analyze] {request_id}: ERROR — {type(_exc).__name__}: {_exc}",
+                flush=True,
+            )
+        finally:
+            _pending_tasks.discard(asyncio.current_task())
+
+    _task = asyncio.create_task(_run_analysis())
+    _pending_tasks.add(_task)  # strong ref prevents premature GC
 
     return web.json_response(
         {

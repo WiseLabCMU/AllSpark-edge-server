@@ -463,6 +463,209 @@ def _create_session_viewer() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Error frequency chart helpers
+# ---------------------------------------------------------------------------
+
+import re as _re_ec
+import csv as _csv
+from pathlib import Path as _Path
+
+# Regex to pull the short error code (e.g. "DG052", "IME014") out of the
+# full error detail string produced by kafka_error_event_monitor.
+_ERROR_CODE_RE = _re_ec.compile(
+    r'code=([A-Z]{2,6}\d{3,6})',
+    _re_ec.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Load error_codes.csv once at import time.
+# File lives at python/error_codes.csv (sibling of control_plane/).
+# Format: Machine Error Code;Error Text;MES error Code
+# ---------------------------------------------------------------------------
+_ERROR_CODES_CSV = _Path(__file__).parent.parent.parent / "error_codes.csv"
+_ERROR_CODE_MAP: Dict[str, str] = {}
+
+def _load_error_code_map() -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    try:
+        with _ERROR_CODES_CSV.open(encoding="utf-8") as fh:
+            reader = _csv.reader(fh, delimiter=";")
+            next(reader, None)  # skip header
+            for row in reader:
+                if len(row) >= 2 and row[0].strip():
+                    result[row[0].strip().upper()] = row[1].strip()
+    except Exception:
+        pass
+    return result
+
+_ERROR_CODE_MAP = _load_error_code_map()
+
+# mtime-based cache so interarrival_stats.json is only parsed when it changes.
+_interarrival_cache: Dict[str, Any] = {"path": "", "mtime": -1.0, "counts": {}}
+
+
+def _extract_error_code(error_label: str) -> str:
+    """Return the short error code from an error detail string, or ''."""
+    if not error_label:
+        return ""
+    m = _ERROR_CODE_RE.search(error_label)
+    return m.group(1).upper() if m else ""
+
+
+def _extract_error_desc(error_label: str) -> str:
+    """
+    Return a human-readable description for the error code in *error_label*.
+    Priority:
+      1. error_codes.csv lookup (authoritative)
+      2. text="..." field embedded in the Kafka detail string
+    """
+    code = _extract_error_code(error_label)
+    if code and code in _ERROR_CODE_MAP:
+        return _ERROR_CODE_MAP[code]
+    # fallback: text="..." field in the Kafka detail string
+    m = _re_ec.search(r'text=["\u201c]([^"\u201d]+)["\u201d]', error_label)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def _load_interarrival_counts(anomaly_base_dirs: List[str]) -> Dict[str, int]:
+    """
+    Read lookback_errors.summary from interarrival_stats.json in the first
+    anomaly base directory that contains the file.
+    Returns a dict mapping error_code -> count, or {} on any failure.
+    Caches by file mtime so disk is only read when the file actually changes.
+    """
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+    for base in anomaly_base_dirs:
+        candidate = _Path(base) / "interarrival_stats.json"
+        path_str = str(candidate)
+        try:
+            mtime = _os.path.getmtime(path_str)
+            if (
+                path_str == _interarrival_cache["path"]
+                and mtime == _interarrival_cache["mtime"]
+            ):
+                return _interarrival_cache["counts"]
+            data = _json.loads(candidate.read_text(encoding="utf-8"))
+            summary = data.get("lookback_errors", {}).get("summary", {})
+            counts = {k.upper(): int(v) for k, v in summary.items() if v}
+            _interarrival_cache.update({"path": path_str, "mtime": mtime, "counts": counts})
+            return counts
+        except Exception:
+            continue
+    return {}
+
+
+def _build_error_chart_data(
+    responses: List[Dict[str, Any]],
+    hours: int = 48,
+    top_n: int = 5,
+    extra_counts: Dict[str, int] | None = None,
+    extra_descs: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
+    """
+    Count error code occurrences in *responses* within the last *hours* hours,
+    merged with *extra_counts* (e.g. from interarrival_stats.json).
+    Returns a dict ready to pass to ui.echart's ``options``.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    # hist_counts is the authoritative Kafka-level 48h event count from
+    # interarrival_stats.json.  live_counts tallies agent responses in the
+    # same window.  We take max(hist, live) per code so we:
+    #  - never double-count (responses are a subset of the Kafka events), and
+    #  - still pick up codes that arrived after the JSON's last write.
+    hist_counts: Dict[str, int] = dict(extra_counts or {})
+    descs:       Dict[str, str] = dict(extra_descs or {})
+    live_counts: Dict[str, int] = {}
+
+    for r in responses:
+        ts_str = r.get("anomaly_time", "")
+        if ts_str:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts < cutoff:
+                    continue
+            except Exception:
+                continue  # skip entries whose timestamp cannot be parsed
+
+        err = r.get("error", "")
+        code = _extract_error_code(err)
+        if not code:
+            continue
+        live_counts[code] = live_counts.get(code, 0) + 1
+        if code not in descs:
+            descs[code] = _extract_error_desc(err)
+
+    # Merge: authoritative JSON counts are the floor; live counts win only
+    # when they exceed the JSON (i.e. new errors since last JSON write).
+    counts: Dict[str, int] = dict(hist_counts)
+    for code, cnt in live_counts.items():
+        counts[code] = max(counts.get(code, 0), cnt)
+
+    if not counts:
+        return {}
+
+    # Enrich descriptions from CSV for any code that has no description yet
+    for code in counts:
+        if code not in descs and code in _ERROR_CODE_MAP:
+            descs[code] = _ERROR_CODE_MAP[code]
+
+    top = sorted(counts.items(), key=lambda x: -x[1])[:top_n]
+    codes  = [c for c, _ in top]
+    values = [v for _, v in top]
+    descriptions = [descs.get(c, "") for c in codes]
+
+    # Colour palette — warm amber/red tones matching the dashboard severity palette
+    colours = ["#f59e0b", "#ef4444", "#f97316", "#a855f7", "#3b82f6"]
+
+    return {
+        "_codes":        codes,
+        "_values":       values,
+        "_descriptions": descriptions,
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "shadow"},
+            "formatter": "function(p){return p[0].name+': <b>'+p[0].value+'</b> occurrences';}",
+        },
+        "grid": {"top": 12, "bottom": 4, "left": 40, "right": 12, "containLabel": True},
+        "xAxis": {
+            "type": "category",
+            "data": codes,
+            "axisLabel": {"fontWeight": "bold", "fontSize": 13, "color": "#1f2937"},
+            "axisTick": {"alignWithLabel": True},
+        },
+        "yAxis": {
+            "type": "value",
+            "minInterval": 1,
+            "axisLabel": {"fontSize": 11, "color": "#6b7280"},
+            "splitLine": {"lineStyle": {"type": "dashed", "color": "#f3f4f6"}},
+        },
+        "series": [{
+            "type": "bar",
+            "data": [
+                {"value": v, "itemStyle": {"color": colours[i % len(colours)]}}
+                for i, v in enumerate(values)
+            ],
+            "barMaxWidth": 56,
+            "label": {
+                "show": True,
+                "position": "top",
+                "fontWeight": "bold",
+                "fontSize": 13,
+                "color": "#1f2937",
+            },
+        }],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main agent page  (/agent)
 # ---------------------------------------------------------------------------
 
@@ -554,17 +757,129 @@ def create_page() -> None:
                 ).props("dense unelevated")
                 ui.label("|").classes("text-gray-300 text-xs")
                 since_restart_toggle = ui.checkbox(
-                    "Since last restart", value=True
+                    "Since last restart", value=False
                 ).props("dense").classes("text-xs text-gray-600").tooltip(
                     "Show only anomalies submitted after the edge server last started. "
                     "Uncheck to view full history including previous runs."
                 )
 
-            responses_container = ui.column().classes("w-full gap-3")
+            # ── Two-column layout: chart left, cards right ────────────────
+            with ui.row().classes("w-full items-start gap-2 no-wrap"):
+
+                # ── LEFT: error frequency chart ────────────────────────────
+                with ui.column().classes("shrink-0 gap-0").style("width:220px"):
+                    with ui.card().classes(
+                        "shadow-sm border border-gray-100 bg-white p-2 w-full"
+                    ):
+                        with ui.row().classes("w-full items-center justify-between mb-1"):
+                            ui.label("Top Errors").classes(
+                                "text-xs font-bold text-gray-600 tracking-wide uppercase"
+                            )
+                            chart_window_label = ui.label("").classes(
+                                "text-[10px] text-gray-400"
+                            )
+                        ui.label("Last 48 h  •  lookback + live").classes(
+                            "text-[10px] text-gray-400 mb-2"
+                        )
+                        chart_el = ui.echart({}).classes("w-full").style("height:260px")
+                        chart_desc_col = ui.column().classes("w-full gap-1 mt-2")
+
+                # ── RIGHT: anomaly response cards ──────────────────────────
+                responses_container = ui.column().classes("flex-1 min-w-0 gap-3")
+
+            # ── chart update helper — called on every poll ───────────────────
+            anomaly_base_dirs: List[str] = (
+                mc_config.get("anomalyEventDirs", []) or []
+            )
+
+            def _update_chart(responses: List[Dict[str, Any]]) -> None:
+                from datetime import datetime
+                # Merge lookback counts from interarrival_stats.json with
+                # live agent response counts for a complete 48h picture.
+                hist_counts = _load_interarrival_counts(anomaly_base_dirs)
+                opts = _build_error_chart_data(
+                    responses, hours=48, top_n=5,
+                    extra_counts=hist_counts,
+                )
+                if not opts:
+                    empty_opts = {
+                        "graphic": [{
+                            "type": "text",
+                            "left": "center", "top": "middle",
+                            "style": {"text": "No errors recorded",
+                                      "fill": "#9ca3af", "fontSize": 13},
+                        }],
+                        "xAxis": {"show": False},
+                        "yAxis": {"show": False},
+                        "series": [],
+                    }
+                    chart_el.options.clear()
+                    chart_el.options.update(empty_opts)
+                    chart_el.update()
+                    chart_desc_col.clear()
+                    chart_window_label.set_text("")
+                    return
+
+                colours = ["#f59e0b", "#ef4444", "#f97316", "#a855f7", "#3b82f6"]
+                codes  = opts.pop("_codes", [])
+                descs  = opts.pop("_descriptions", [])
+                opts.pop("_values", None)
+
+                # Horizontal bar chart (easier to read in a narrow column)
+                opts["xAxis"] = {
+                    "type": "value",
+                    "minInterval": 1,
+                    "axisLabel": {"fontSize": 10, "color": "#6b7280"},
+                    "splitLine": {"lineStyle": {"type": "dashed", "color": "#f3f4f6"}},
+                }
+                opts["yAxis"] = {
+                    "type": "category",
+                    "data": codes[::-1],  # highest count at top
+                    "axisLabel": {"fontWeight": "bold", "fontSize": 12, "color": "#1f2937"},
+                }
+                opts["grid"] = {"top": 4, "bottom": 4, "left": 8, "right": 32, "containLabel": True}
+                opts["series"][0]["data"] = [
+                    {"value": opts["series"][0]["data"][i]["value"],
+                     "itemStyle": {"color": colours[(len(codes)-1-i) % len(colours)],
+                                   "borderRadius": [0, 3, 3, 0]}}
+                    for i in range(len(codes) - 1, -1, -1)
+                ]
+                opts["series"][0]["label"] = {
+                    "show": True, "position": "right",
+                    "fontWeight": "bold", "fontSize": 12, "color": "#1f2937",
+                }
+                opts["series"][0]["barMaxWidth"] = 28
+
+                chart_el.options.clear()
+                chart_el.options.update(opts)
+                chart_el.update()
+
+                # Description legend — one line per error code, code + full description
+                chart_desc_col.clear()
+                with chart_desc_col:
+                    for i, (code, desc) in enumerate(zip(codes, descs)):
+                        colour = colours[i % len(colours)]
+                        desc_text = desc if desc else ""
+                        ui.html(
+                            f'<span style="display:inline-flex;align-items:flex-start;'
+                            f'gap:5px;font-size:10px;line-height:1.5">'
+                            f'<span style="width:8px;height:8px;border-radius:2px;margin-top:3px;'
+                            f'background:{colour};flex-shrink:0"></span>'
+                            f'<span><b style="color:#374151;font-size:11px">{code}</b>'
+                            + (f'<br><span style="color:#6b7280">{desc_text}</span>' if desc_text else '') +
+                            f'</span></span>'
+                        )
+
+                chart_window_label.set_text(
+                    f"{datetime.now().strftime('%H:%M')}"
+                )
 
             # State carried across refresh ticks
             seen_ids: set = set()
             new_ids: set = set()
+            # Separate sig for chart updates — only rebuild the chart when the
+            # set of error codes/counts actually changes, not on every poll.
+            chart_sig: Dict[str, Any] = {"value": None}
             current_responses: List[Dict[str, Any]] = []
             first_render: Dict[str, bool] = {"value": True}
             # Signature of what's currently rendered, used to skip needless
@@ -634,15 +949,29 @@ def create_page() -> None:
                     f"Last updated {datetime.now().strftime('%H:%M:%S')}"
                 )
 
+                # Update error frequency chart with ALL responses (not filtered)
+                # so the chart always reflects the full 48h picture.
+                # Only rebuild when the error data has changed to avoid
+                # unnecessary redraws on every poll tick.
+                new_chart_sig = tuple(
+                    (r.get("error", ""), r.get("anomaly_time", ""))
+                    for r in responses
+                )
+                if new_chart_sig != chart_sig["value"]:
+                    chart_sig["value"] = new_chart_sig
+                    _update_chart(responses)
+
                 # Compute a lightweight signature of what's about to be rendered.
                 # If the same set of cards (and their flash state, and the active
                 # filter) is already on screen, do NOT clear the container — that
                 # would collapse any drop-down the engineer has opened.
+                # Include chart-relevant data so new errors force a re-render.
                 sig = (
                     severity_filter.value,
                     since_restart_toggle.value,
                     tuple(r.get("request_id", "") for r in visible),
                     tuple(sorted(new_ids)),
+                    tuple(r.get("error", "") for r in responses),
                 )
                 if not force and sig == render_sig["value"]:
                     return
@@ -819,27 +1148,31 @@ def create_page() -> None:
                                         f"{os.path.basename(anomaly_folder)}"
                                     )
 
-                    # ── Inline drop-down: Full Agent Summary ──────────────
-                    if summary and sev["level"] != "agent_error":
-                        with ui.expansion(
-                            "📄 Full Summary", icon=None, value=False,
-                        ).classes("w-full mt-2 border-t border-gray-100"):
-                            ui.markdown(summary).classes("text-sm text-gray-700")
-
-                    # ── Inline video pane ─────────────────────────────────
+                    # ── Inline video pane (above summary) ────────────────
                     if inline_video_url:
                         with ui.expansion(
                             f"▶ Video Clip  —  {clip_basename}",
                             icon=None,
                             value=False,
-                        ).classes("w-full mt-1 border-t border-gray-100"):
+                        ).classes("w-full mt-2 border-t border-gray-100"):
                             with ui.column().classes("w-full items-center gap-1"):
-                                ui.video(inline_video_url).classes(
-                                    "w-full max-w-3xl rounded shadow-sm"
-                                ).props("controls preload=metadata")
+                                escaped_url = inline_video_url.replace('"', '%22')
+                                ui.html(
+                                    f'<video controls preload="auto" '
+                                    f'style="width:100%;max-width:900px;border-radius:6px;" '
+                                    f'src="{escaped_url}">'
+                                    f'Your browser does not support HTML5 video.</video>'
+                                )
                                 ui.label(clip_path or "").classes(
                                     "text-[10px] text-gray-400 font-mono"
                                 )
+
+                    # ── Inline drop-down: Full Agent Summary ──────────────
+                    if summary and sev["level"] != "agent_error":
+                        with ui.expansion(
+                            "📄 Full Summary", icon=None, value=False,
+                        ).classes("w-full mt-1 border-t border-gray-100"):
+                            ui.markdown(summary).classes("text-sm text-gray-700")
 
             # ── Dialog helpers ────────────────────────────────────────────────
 

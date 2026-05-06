@@ -233,8 +233,18 @@ class AnomalyResponseStore:
                 seen.add(resolved)
                 unique_files.append(rf)
 
-        # Sort by file modification time (newest first)
-        unique_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        # Sort by anomaly_time (the actual event time) newest first so the
+        # dashboard always shows the most recent incident at the top.
+        # Fall back to file mtime if anomaly_time cannot be parsed.
+        def _sort_key(p: Path):
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                ts = data.get("anomaly_time", "")
+                return _parse_ts_for_folder(ts) if ts else datetime.fromtimestamp(p.stat().st_mtime)
+            except Exception:
+                return datetime.fromtimestamp(p.stat().st_mtime)
+
+        unique_files.sort(key=_sort_key, reverse=True)
 
         for rf in unique_files[:limit]:
             try:
@@ -258,11 +268,14 @@ class AnomalyResponseStore:
             stored_at = d.get("stored_at", "")
             d["anomaly_folder"] = self._anomaly_folder_for(stored_at)
 
-            # Enrich with triage fields from sibling request.json (additive)
+            # Enrich with triage fields from sibling request.json (additive).
+            # For string fields, also overwrite if the existing value is empty —
+            # AgentResponse.to_dict() always emits clip_path:"" when no clip was
+            # known at submit time, and setdefault() would silently leave it blank.
             triage = self._triage_fields_for(stored_at)
             for k, v in triage.items():
-                # Don't overwrite anything the response itself already provides
-                d.setdefault(k, v)
+                if not d.get(k):   # overwrite missing OR empty-string values
+                    d[k] = v
             out.append(d)
         return out
 
@@ -298,6 +311,37 @@ class AnomalyResponseStore:
                     out["extra_metadata"] = extra
             except Exception:
                 pass
+
+        # Resolve clip_path to an absolute NFS path.
+        # kafka-profiler sends either a bare filename or "" (NVR still running
+        # at submission time).  In both cases we search video_anomaly_data/ so
+        # the dashboard can always display the clip once NVR finishes.
+        raw_clip = out.get("clip_path", "")
+        if not raw_clip or not Path(raw_clip).is_absolute():
+            anomaly_folder = self._anomaly_folder_for(stored_at)
+            if anomaly_folder:
+                video_dir_path = Path(anomaly_folder) / "video_anomaly_data"
+                if raw_clip:
+                    # Bare filename: look for it (+ H.264 sidecar) in video_anomaly_data/
+                    search_dirs = [video_dir_path, Path(anomaly_folder)]
+                    for candidate_dir in search_dirs:
+                        stem = Path(raw_clip).stem.removesuffix(".h264")
+                        for variant in [f"{stem}.h264.mp4", raw_clip]:
+                            candidate = candidate_dir / variant
+                            if candidate.exists():
+                                out["clip_path"] = str(candidate)
+                                break
+                        if out.get("clip_path") and Path(out["clip_path"]).is_absolute():
+                            break
+                else:
+                    # Empty clip_path: NVR was still running at submission — scan
+                    # video_anomaly_data/ for any clip that has since appeared.
+                    if video_dir_path.exists():
+                        for pattern in ("clip_ch*.h264.mp4", "clip_ch*.mp4"):
+                            hits = sorted(video_dir_path.glob(pattern))
+                            if hits:
+                                out["clip_path"] = str(hits[0])
+                                break
 
         # First file in video_clips/, exposed via /anomaly-media static mount
         video_dir = Path(stored_at) / self._VIDEO_CLIPS_DIR
@@ -348,7 +392,7 @@ class AnomalyResponseStore:
         # 2. Walk up looking for an ``anomaly_*`` ancestor that contains
         #    an ``agent_responses`` directory (the per-anomaly layout).
         for parent in Path(stored_at).parents:
-            if parent.name.startswith("anomaly_") and (parent / "agent_responses").is_dir():
+            if parent.name.lower().startswith("anomaly_") and (parent / "agent_responses").is_dir():
                 return str(parent)
         return ""
 

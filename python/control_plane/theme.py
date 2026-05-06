@@ -128,7 +128,7 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
 
             ui.label('👤 test-user').classes('ml-8 mr-2 text-sm text-gray-300')
 
-    container_classes = 'w-full mx-auto p-4' + ('' if full_width else ' max-w-5xl mt-6')
+    container_classes = 'w-full mx-auto px-1 py-1' + ('' if full_width else ' mt-1')
     with ui.column().classes(container_classes):
         if not hide_title:
             ui.label(navtitle).classes('text-2xl font-bold mb-4 text-gray-800')
