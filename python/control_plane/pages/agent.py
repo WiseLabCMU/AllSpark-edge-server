@@ -17,6 +17,7 @@ analysis via POST /api/agent/analyze.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -106,6 +107,14 @@ def _truncate(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"
+
+
+def _clip_video_url(clip_path: str) -> str:
+    """Return the /api/clip-video URL for *clip_path*, or '' if not available."""
+    if not clip_path:
+        return ""
+    encoded = base64.urlsafe_b64encode(clip_path.encode()).rstrip(b"=").decode()
+    return f"/api/clip-video?path={encoded}"
 
 
 def _extract_anomaly_line(summary: str, max_chars: int = 240) -> str:
@@ -671,6 +680,10 @@ def create_page() -> None:
                 # analysis_mode is stored in extra_metadata by kafka-profiler
                 extra_meta = r.get("extra_metadata", {}) or {}
                 analysis_mode = extra_meta.get("analysis_mode", "")
+                # Inline video URL — prefer the /api/clip-video endpoint which
+                # auto-transcodes to H.264 (browser-native), falling back to
+                # the existing anomaly-media URL for uploads-local clips.
+                inline_video_url = _clip_video_url(clip_path) or video_clip_url
 
                 opt = AnomalyOption(
                     session_id=session_id,
@@ -812,6 +825,21 @@ def create_page() -> None:
                             "📄 Full Summary", icon=None, value=False,
                         ).classes("w-full mt-2 border-t border-gray-100"):
                             ui.markdown(summary).classes("text-sm text-gray-700")
+
+                    # ── Inline video pane ─────────────────────────────────
+                    if inline_video_url:
+                        with ui.expansion(
+                            f"▶ Video Clip  —  {clip_basename}",
+                            icon=None,
+                            value=False,
+                        ).classes("w-full mt-1 border-t border-gray-100"):
+                            with ui.column().classes("w-full items-center gap-1"):
+                                ui.video(inline_video_url).classes(
+                                    "w-full max-w-3xl rounded shadow-sm"
+                                ).props("controls preload=metadata")
+                                ui.label(clip_path or "").classes(
+                                    "text-[10px] text-gray-400 font-mono"
+                                )
 
             # ── Dialog helpers ────────────────────────────────────────────────
 
