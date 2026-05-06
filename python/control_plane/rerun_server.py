@@ -257,6 +257,16 @@ class RerunAnomalyViewer:
                 config.get("agentResponsePath", "uploads/agent_responses"),
             )
         )
+        # Read control_plane config for external host so the browser-facing
+        # gRPC connect_to URI uses the routable IP, not 127.0.0.1.
+        import yaml as _yaml
+        _cp_config: dict = {}
+        _cfg_path = _PYTHON_DIR / "config.yaml"
+        if _cfg_path.exists():
+            with open(_cfg_path) as _f:
+                _cp_config = (_yaml.safe_load(_f) or {}).get("control_plane", {})
+        self._external_host: str = _cp_config.get("rerunExternalHost", "") or ""
+        self._grpc_port: int = int(_cp_config.get("rerunGrpcPort", 9876))
         self._agent_data_folder = self._resolve_agent_video_folder()
         self._anomaly_folder: Optional[Path] = (
             Path(anomaly_folder) if anomaly_folder else None
@@ -330,9 +340,16 @@ class RerunAnomalyViewer:
         # Start gRPC server + web viewer
         server_uri = rr.serve_grpc()
         logger.info("Rerun gRPC server at: %s", server_uri)
+        # Rewrite 127.0.0.1 → external host so the browser-embedded
+        # connect_to URI is reachable from outside the container.
+        if self._external_host and self._external_host not in ("localhost", "127.0.0.1", "0.0.0.0"):
+            connect_to = server_uri.replace("127.0.0.1", self._external_host)
+            logger.info("Rerun connect_to rewritten for external access: %s", connect_to)
+        else:
+            connect_to = server_uri
         import inspect as _inspect
         _serve_web_kwargs: dict = dict(
-            connect_to=server_uri,
+            connect_to=connect_to,
             open_browser=False,
             web_port=self._web_port,
         )
