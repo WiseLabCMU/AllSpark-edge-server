@@ -228,9 +228,12 @@ async def handle_agent_analyze(request):
     clip_path = body.get("clip_path", "")
     anomaly_time = body.get("anomaly_time", "")
 
-    if not clip_path or not anomaly_time:
+    # clip_path is optional — NVR capture may still be in progress when the
+    # Kafka client submits. The agent discovers clips via report_folder_content
+    # using anomaly_folder. Only anomaly_time is strictly required.
+    if not anomaly_time:
         return web.json_response(
-            {"success": False, "error": "clip_path and anomaly_time are required"},
+            {"success": False, "error": "anomaly_time is required"},
             status=400,
         )
 

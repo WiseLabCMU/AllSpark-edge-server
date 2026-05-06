@@ -90,6 +90,113 @@ Both servers read from `python/config.yaml`. Missing values are filled from defa
 
 For detailed architecture, refer to the [System Context diagram in REQUIREMENTS.md](REQUIREMENTS.md#system-context).
 
+### config.yaml reference
+
+The file has two top-level sections: `mobile_client` (API server, port 9080) and
+`control_plane` (NiceGUI dashboard + Rerun viewer, port 9081).
+
+#### Fields you must edit per deployment
+
+| Field | Local dev | Remote VM (HtvP) | Notes |
+|---|---|---|---|
+| `mobile_client.agentConfig.agent_url` | `http://localhost:8000/run` | `http://host.containers.internal:8000/run` | `host.containers.internal` resolves to the container host in Docker/Podman |
+| `mobile_client.agentResponsePath` | `uploads/agent_responses/` | `uploads/agent_responses/` or `/net/htvvm662/fs0/anomaly_events/` | Use the NFS path on remote to write responses directly to the shared share |
+| `mobile_client.anomalyEventDirs` | *(omit or leave empty)* | `- /net/htvvm662/fs0/anomaly_events` | Extra dirs the dashboard scans for anomaly folders written by kafka-profiler |
+| `control_plane.rerunExternalHost` | `localhost` | `10.76.8.217` | Browser-facing hostname for the Rerun viewer iframe and "Open in New Window" URL — must be reachable from the user's browser |
+
+#### Full annotated example (remote VM)
+
+```yaml
+mobile_client:
+  hostname: 0.0.0.0          # bind interface — keep 0.0.0.0 in container
+  port: 9080                 # API port (must match docker -p mapping)
+  autoUpload: true
+  serviceName: AllSpark Server
+  keyFile: keys/test-private.key
+  certFile: keys/test-public.crt
+  uploadPath: uploads/
+  clientUploadsPath: uploads/mobile_clients/
+
+  # Where the edge server writes agent response folders.
+  # Local: uploads/agent_responses/  (inside the container volume)
+  # Remote: /net/htvvm662/fs0/anomaly_events/  (NFS share, shared with kafka-profiler)
+  agentResponsePath: uploads/agent_responses/
+
+  # Additional directories to scan for Anomaly_*/ folders written by kafka-profiler.
+  # Each must be an absolute path that is bind-mounted into the container.
+  anomalyEventDirs:
+    - /net/htvvm662/fs0/anomaly_events
+
+  keepAliveIntervalMs: 5000
+
+  agentConfig:
+    # URL of the ADK /run endpoint.
+    # - Local dev (no container): http://localhost:8000/run
+    # - Inside container (Docker/Podman host network): http://host.containers.internal:8000/run
+    # - Explicit IP (if host.containers.internal not supported): http://10.76.8.217:8000/run
+    agent_url: http://host.containers.internal:8000/run
+    agent_app_name: allspark_agent
+    agent_user_id: user
+    agent_session_id: edge_session
+    agent_timeout: 900           # seconds — increase for long video analysis
+    agent_init_message: Hey, can you help me do some analysis?
+
+  clientConfig:                  # mobile app negotiation — usually leave unchanged
+    videoFormat: mp4
+    audioFormat: wav
+    fps: 30.0
+    videoChunkDurationMs: 10000
+    videoBufferMaxMB: 16000
+    communicationsPolicy:
+      wifi: true
+      cellular: true
+      ethernet: true
+      usb: true
+
+control_plane:
+  port: 9081                     # Dashboard port
+  storageSecret: allspark-secret
+
+  # rerunHost: internal TCP probe used by the server to check if the Rerun
+  # web-viewer process has started. Keep as localhost — do NOT set to the
+  # public IP here, or the health-check will fail inside the container.
+  rerunHost: localhost
+
+  # rerunExternalHost: hostname the *browser* uses to open the Rerun iframe.
+  # - Local dev: localhost
+  # - Remote VM: the VM's LAN IP (e.g. 10.76.8.217) reachable from your browser
+  rerunExternalHost: 10.76.8.217
+
+  rerunPort: 9090                # Rerun web viewer port
+  rerunGrpcPort: 9876            # Rerun gRPC ingest port (SDK → viewer)
+
+  logPaths:
+    anomalyLogs: logs/anomalies/
+    rigLogs: logs/data/datacapture-rig
+```
+
+#### Local dev (no Docker)
+
+```yaml
+mobile_client:
+  agentResponsePath: uploads/agent_responses/
+  anomalyEventDirs: []           # or omit entirely
+  agentConfig:
+    agent_url: http://localhost:8000/run
+control_plane:
+  rerunHost: localhost
+  rerunExternalHost: localhost
+```
+
+#### Updating config on the remote without a full rebuild
+
+```bash
+# Edit locally, then copy to the remote deploy directory
+scp AllSpark-edge-server/python/config.yaml user@10.76.8.217:~/allspark-edge/config.yaml
+# Restart the container to pick up the new file (bind-mounted — no rebuild needed)
+ssh user@10.76.8.217 'podman restart allspark-edge-server'
+```
+
 ## SSL Certificates
 
 Generate a self-signed certificate for WSS/HTTPS (one-time):

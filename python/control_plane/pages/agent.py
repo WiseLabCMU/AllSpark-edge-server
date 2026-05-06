@@ -305,37 +305,86 @@ def _kill_prior_rerun_servers(rerun_port: int) -> int:
     Terminate any lingering rerun_server.py processes that are holding our
     web-viewer port or the embedded rerun gRPC port (9876).
 
-    Returns the number of processes killed. Safe no-op if ``lsof`` is
-    missing or no instance is running.
+    Returns the number of processes killed. Safe no-op if no instance is running.
+    Uses /proc (Linux) when lsof is unavailable.
     """
     import shutil
     import signal
 
+    own_pid = os.getpid()
+    pids_to_kill: set[int] = set()
+
+    # Strategy 1: lsof (macOS / most Linux distros)
     lsof = shutil.which("lsof")
-    if not lsof:
-        return 0
+    if lsof:
+        for port in (rerun_port, 9876):
+            try:
+                out = subprocess.run(
+                    [lsof, f"-iTCP:{port}", "-sTCP:LISTEN", "-t", "-P"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                for pid_str in out.stdout.split():
+                    if pid_str.strip().isdigit():
+                        pids_to_kill.add(int(pid_str))
+            except Exception:
+                pass
+
+    # Strategy 2: /proc scan (Linux containers without lsof)
+    if not pids_to_kill:
+        try:
+            import re as _re
+            proc_root = Path("/proc")
+            target_ports = {rerun_port, 9876}
+            hex_ports = {f"{p:04X}" for p in target_ports}
+            for pid_dir in proc_root.iterdir():
+                if not pid_dir.name.isdigit():
+                    continue
+                pid = int(pid_dir.name)
+                if pid == own_pid:
+                    continue
+                # Check /proc/<pid>/net/tcp6 and tcp for listening sockets
+                for net_file in (pid_dir / "net" / "tcp6", pid_dir / "net" / "tcp"):
+                    try:
+                        content = net_file.read_text()
+                        for line in content.splitlines()[1:]:
+                            parts = line.split()
+                            if len(parts) < 4:
+                                continue
+                            # local_address field: IPADDR:PORT_HEX, state=0A means LISTEN
+                            local = parts[1]
+                            state = parts[3]
+                            if state != "0A":
+                                continue
+                            port_hex = local.split(":")[-1]
+                            if port_hex in hex_ports:
+                                pids_to_kill.add(pid)
+                    except (PermissionError, FileNotFoundError):
+                        pass
+        except Exception:
+            pass
+
+    # Strategy 3: pkill rerun_server.py by name (last resort)
+    if not pids_to_kill:
+        pkill = shutil.which("pkill")
+        if pkill:
+            try:
+                subprocess.run(
+                    [pkill, "-f", "rerun_server.py"],
+                    timeout=2, capture_output=True,
+                )
+                return 1  # best-effort, count unknown
+            except Exception:
+                pass
 
     killed = 0
-    own_pid = os.getpid()
-    for port in (rerun_port, 9876):
-        try:
-            out = subprocess.run(
-                [lsof, f"-iTCP:{port}", "-sTCP:LISTEN", "-t", "-P"],
-                capture_output=True, text=True, timeout=2,
-            )
-        except Exception:
+    for pid in pids_to_kill:
+        if pid == own_pid:
             continue
-        for pid_str in out.stdout.split():
-            if not pid_str.strip().isdigit():
-                continue
-            pid = int(pid_str)
-            if pid == own_pid:
-                continue
-            try:
-                os.kill(pid, signal.SIGTERM)
-                killed += 1
-            except (ProcessLookupError, PermissionError):
-                pass
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except (ProcessLookupError, PermissionError):
+            pass
     return killed
 
 

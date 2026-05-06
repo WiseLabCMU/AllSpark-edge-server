@@ -330,12 +330,16 @@ class RerunAnomalyViewer:
         # Start gRPC server + web viewer
         server_uri = rr.serve_grpc()
         logger.info("Rerun gRPC server at: %s", server_uri)
-        rr.serve_web_viewer(
+        import inspect as _inspect
+        _serve_web_kwargs: dict = dict(
             connect_to=server_uri,
             open_browser=False,
             web_port=self._web_port,
-            bind="0.0.0.0",
         )
+        # 'bind' was added in a later rerun release; pass it only when supported
+        if "bind" in _inspect.signature(rr.serve_web_viewer).parameters:
+            _serve_web_kwargs["bind"] = "0.0.0.0"
+        rr.serve_web_viewer(**_serve_web_kwargs)
         logger.info("Rerun web viewer serving on 0.0.0.0:%d", self._web_port)
 
         # Load data first so we know how many topics there are, THEN send the

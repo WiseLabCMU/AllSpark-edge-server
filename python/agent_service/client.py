@@ -335,6 +335,10 @@ class AgentApiClient:
         clip_basename = os.path.basename(request.clip_path)
         if request.anomaly_folder and clip_basename:
             clip_ref = os.path.join(request.anomaly_folder, "video_anomaly_data", clip_basename)
+        elif not clip_basename and request.anomaly_folder:
+            # NVR capture was still in progress when kafka submitted — no clip yet.
+            # Tell the agent to discover available clips first.
+            clip_ref = None
         else:
             # Fallback (e.g. MQTT/CESAR path where anomaly_folder is not set):
             # pass basename only and let the tool scan its configured data folder.
@@ -359,6 +363,23 @@ class AgentApiClient:
 
         messages_str = json.dumps(request.mqtt_clip_messages, indent=2)
 
+        if clip_ref is None:
+            video_dir = os.path.join(request.anomaly_folder, "video_anomaly_data")
+            task_section = (
+                f"## Task\n"
+                f"No clip was available at submission time (NVR capture may have been in progress).\n"
+                f"First call `report_folder_content` with `folder_path=\"{video_dir}\"` to list "
+                f"available clips, then call `analyze_video_frames` with the most recently "
+                f"modified `clip_ch*.mp4` file found there. Use the full absolute path.\n"
+            )
+        else:
+            task_section = (
+                f"## Task\n"
+                f"Call `analyze_video_frames` with `user_video_file=\"{clip_ref}\"`.\n"
+                f"Pass that value exactly as shown — it is the full path to the anomaly clip "
+                f"on the shared NFS volume. The tool will open it directly.\n"
+            )
+
         return (
             f"An anomaly was detected from monitoring {messages_label} on {system_label}.\n"
             f"A video clip of the system operation was recorded during this anomaly.\n\n"
@@ -372,10 +393,7 @@ class AgentApiClient:
             f"- Log Path            : {request.log_path}\n\n"
             f"## {messages_section_title}\n"
             f"{messages_str}\n\n"
-            f"## Task\n"
-            f"Call `analyze_video_frames` with `user_video_file=\"{clip_ref}\"`.\n"
-            f"Pass that value exactly as shown — it is the full path to the anomaly clip "
-            f"on the shared NFS volume. The tool will open it directly.\n"
+            + task_section +
             f"Reference videos for each camera channel are in "
             f"/net/htvvm662/fs0/anomaly_events/good_reference_videos/ and are selected "
             f"automatically by channel prefix.\n\n"
@@ -384,6 +402,33 @@ class AgentApiClient:
             f"2. Cross-reference the {messages_label} to understand the operational context.\n"
             f"3. Provide insights on what likely caused the anomaly.\n"
         )
+
+    @staticmethod
+    def _strip_thought_preamble(text: str) -> str:
+        """Remove internal agent thinking/planning text that precedes the formatted output.
+
+        Gemini thinking-mode models may prepend a 'thought ...' block containing
+        internal reasoning.  We only want the formatted analysis starting from
+        the first recognised section heading ('Overall Summary' or the video
+        analysis header).  Falls back gracefully if no known heading is found.
+        """
+        import re
+
+        # Prefer starting at 'Overall Summary' (with optional emoji / heading prefix)
+        m = re.search(
+            r"(#{1,3}\s*)?[^\S\r\n]*📋\s*Overall Summary|"
+            r"(#{1,3}\s*Overall Summary)",
+            text,
+        )
+        if m:
+            return text[m.start():].lstrip("\n")
+
+        # Fall back: strip a leading 'thought …' block that ends at the first ## heading
+        m = re.search(r"(?m)^##\s+", text)
+        if m and text.lstrip().lower().startswith("thought"):
+            return text[m.start():].lstrip("\n")
+
+        return text
 
     @staticmethod
     def _extract_summary(raw: Any) -> str:
@@ -395,8 +440,9 @@ class AgentApiClient:
         if raw is None:
             return ""
 
-        # Pattern 1: list of events/messages
+        # Pattern 1: list of events/messages — collect all text parts and join them
         if isinstance(raw, list):
+            parts: list[str] = []
             for item in raw:
                 if isinstance(item, dict):
                     # ADK streaming format
@@ -404,21 +450,25 @@ class AgentApiClient:
                     if isinstance(content, dict):
                         for part in content.get("parts", []):
                             if isinstance(part, dict) and "text" in part:
-                                return part["text"]
+                                parts.append(part["text"])
                     # Simple text field
-                    if "text" in item:
-                        return item["text"]
+                    elif "text" in item:
+                        parts.append(item["text"])
+            if parts:
+                text = "\n".join(parts)
+                return AgentApiClient._strip_thought_preamble(text)
 
         # Pattern 2: dict with candidates/messages
         if isinstance(raw, dict):
             for key in ("response", "text", "output", "message", "answer"):
                 if key in raw and isinstance(raw[key], str):
-                    return raw[key]
+                    return AgentApiClient._strip_thought_preamble(raw[key])
             # Nested candidates
             candidates = raw.get("candidates", [])
             if candidates:
                 try:
-                    return candidates[0]["content"]["parts"][0]["text"]
+                    text = candidates[0]["content"]["parts"][0]["text"]
+                    return AgentApiClient._strip_thought_preamble(text)
                 except (KeyError, IndexError, TypeError):
                     pass
 
