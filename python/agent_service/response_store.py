@@ -343,7 +343,29 @@ class AnomalyResponseStore:
                                 out["clip_path"] = str(hits[0])
                                 break
 
-        # First file in video_clips/, exposed via /anomaly-media static mount
+        # Collect ALL clips from video_anomaly_data/ into clip_paths (multi-camera support).
+        # Prefer .h264.mp4 sidecars; fall back to raw .mp4.  Dedup by stem so a
+        # clip and its sidecar don't both appear.
+        if not out.get("clip_paths"):
+            anomaly_folder_mp = out.get("anomaly_folder", "") or self._anomaly_folder_for(stored_at)
+            vdp = Path(anomaly_folder_mp) / "video_anomaly_data" if anomaly_folder_mp else None
+            if vdp and vdp.exists():
+                seen_stems: set = set()
+                all_clips: list = []
+                # H.264 sidecars first so duplicates are naturally skipped
+                for pattern in ("clip_ch*.h264.mp4", "clip_ch*.mp4"):
+                    for p in sorted(vdp.glob(pattern)):
+                        stem = p.name
+                        # strip .h264 so clip_ch1.h264.mp4 and clip_ch1.mp4 share a stem
+                        base_stem = stem.replace(".h264.mp4", ".mp4")
+                        if base_stem not in seen_stems:
+                            seen_stems.add(base_stem)
+                            all_clips.append(str(p))
+                if all_clips:
+                    out["clip_paths"] = all_clips
+                    # Ensure clip_path is consistent with the first entry
+                    if not out.get("clip_path"):
+                        out["clip_path"] = all_clips[0]
         video_dir = Path(stored_at) / self._VIDEO_CLIPS_DIR
         if video_dir.is_dir():
             try:

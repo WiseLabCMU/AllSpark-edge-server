@@ -274,6 +274,56 @@ Example Agent Page:
 Example Clients Page:
 ![Client Page UI](docs/client-page.png)
 
+## Dashboard — Anomaly Agent Feed (`/agent`)
+
+The Agent page is a live-updating factory-floor monitor that polls for new agent responses and renders them as anomaly cards in a two-column layout.
+
+### Two-Column Layout
+
+| Column | Content |
+|---|---|
+| **Left (220 px)** | Top-5 error frequency histogram — horizontal bar chart built from `interarrival_stats.json` (Kafka lookback counts) merged with live agent response counts |
+| **Right (flex)** | Anomaly cards, newest first, with severity colour-coding, triage chips, and inline video panels |
+
+### Error Frequency Histogram
+
+- Counts are the **`max(Kafka lookback, live response)`** per error code — prevents double-counting since agent responses are a subset of the same Kafka events.
+- `interarrival_stats.json` is read with **mtime-based caching** — disk is only accessed when the file actually changes between poll ticks.
+- The chart is only redrawn when the underlying error data changes (`chart_sig` guard), eliminating flicker on quiet polls.
+- Error code descriptions are loaded once at startup from `python/error_codes.csv` (semicolon-delimited: `Machine Error Code;Error Text;MES error Code`) and displayed as a legend beneath the chart.
+
+### Inline Video Playback
+
+Browsers cannot access NFS paths directly and cannot always decode raw NVR clips. The solution is a three-layer pipeline:
+
+**1. `/api/clip-video` HTTP endpoint (`main.py`)**
+The NFS clip path is base64url-encoded into a query parameter. The server validates the decoded path is under a known `anomalyEventDirs` root (preventing path traversal), then streams the file. The raw NFS path never reaches the browser.
+
+**2. FFmpeg H.264 sidecar (`_ensure_h264_sidecar`)**
+If the clip is not already a browser-compatible `.h264.mp4`, `ffmpeg` creates a sidecar file alongside the original with the `faststart` flag — moving the `moov` atom to the front so the browser can begin streaming without downloading the whole file. Subsequent requests for the same clip serve the already-transcoded sidecar immediately.
+
+**3. HTML5 `<video>` inside a `ui.expansion` (NiceGUI)**
+`ui.html()` injects a standard `<video controls src="...">` element directly into the page. The browser's native video stack handles buffering, seeking, and codec support — no third-party player needed. Each video panel is **collapsed by default** so no data is fetched until the engineer opens it.
+
+**Multi-camera support (`clip_paths`)**
+`response_store.py` scans `video_anomaly_data/` for all `clip_ch*.mp4` files and populates a `clip_paths` list (deduped by stem so `.h264.mp4` sidecars don't duplicate raw clips). Each clip gets its own labelled expansion panel ("Camera 1", "Camera 2", …) with an independent `<video>` element.
+
+### NVR Clip Wait (`server.py`)
+
+When the Kafka profiler submits an anomaly, the NVR may still be writing the clip. `server.py` waits up to 360 s before dispatching to the agent:
+- Initial 120 s sleep (nominal NVR clip duration).
+- Then polls every 10 s via `asyncio.to_thread` (NFS `glob` runs in a thread pool so the event loop is not blocked).
+- A `_pending_tasks` set holds strong references to prevent GC of in-flight tasks.
+
+### Filters
+
+| Filter | Behaviour |
+|---|---|
+| **All / Critical / Flagged / Agent Errors** | Toggle bar filters visible cards by severity |
+| **Since last restart** | Hides anomalies submitted before the edge server last booted (uses `created_at` timestamp, not file mtime) — unchecked by default so full history is visible |
+
+---
+
 ## Known Limitations
 
 - Communications policy (`communicationsPolicy` in `clientConfig`) is advisory to iOS clients — the server sets desired state but cannot enforce radio changes on devices

@@ -996,6 +996,7 @@ def create_page() -> None:
                 sev = _severity_for(r)
                 anomaly_time = r.get("anomaly_time", "N/A")
                 clip_path = r.get("clip_path", "")
+                clip_paths: List[str] = r.get("clip_paths") or ([clip_path] if clip_path else [])
                 clip_basename = os.path.basename(clip_path) if clip_path else "N/A"
                 session_id: str = r.get("session_id", "")
                 summary = r.get("summary", "")
@@ -1012,6 +1013,8 @@ def create_page() -> None:
                 # Inline video URL — prefer the /api/clip-video endpoint which
                 # auto-transcodes to H.264 (browser-native), falling back to
                 # the existing anomaly-media URL for uploads-local clips.
+                # clip_paths drives multi-camera display; inline_video_url is
+                # still used for the right-rail "Watch Clip" button.
                 inline_video_url = _clip_video_url(clip_path) or video_clip_url
 
                 opt = AnomalyOption(
@@ -1148,23 +1151,43 @@ def create_page() -> None:
                                         f"{os.path.basename(anomaly_folder)}"
                                     )
 
-                    # ── Inline video pane (above summary) ────────────────
-                    if inline_video_url:
-                        with ui.expansion(
-                            f"▶ Video Clip  —  {clip_basename}",
-                            icon=None,
-                            value=False,
-                        ).classes("w-full mt-2 border-t border-gray-100"):
+                    # ── Inline video panes — one per camera channel ──────
+                    for _i, _cpath in enumerate(clip_paths):
+                        _curl = _clip_video_url(_cpath)
+                        if not _curl:
+                            continue
+                        _cname = os.path.basename(_cpath)
+                        _label = (
+                            f"▶ Video Clip  —  {_cname}"
+                            if len(clip_paths) == 1
+                            else f"▶ Camera {_i + 1}  —  {_cname}"
+                        )
+                        with ui.expansion(_label, icon=None, value=False).classes(
+                            "w-full mt-2 border-t border-gray-100"
+                        ):
                             with ui.column().classes("w-full items-center gap-1"):
-                                escaped_url = inline_video_url.replace('"', '%22')
+                                _esc = _curl.replace('"', '%22')
                                 ui.html(
                                     f'<video controls preload="auto" '
                                     f'style="width:100%;max-width:900px;border-radius:6px;" '
-                                    f'src="{escaped_url}">'
+                                    f'src="{_esc}">'
                                     f'Your browser does not support HTML5 video.</video>'
                                 )
-                                ui.label(clip_path or "").classes(
+                                ui.label(_cpath).classes(
                                     "text-[10px] text-gray-400 font-mono"
+                                )
+                    # Fallback: video_clip_url from uploads/ when no NFS clips exist
+                    if not clip_paths and video_clip_url:
+                        with ui.expansion(
+                            f"▶ Video Clip  —  {clip_basename}", icon=None, value=False,
+                        ).classes("w-full mt-2 border-t border-gray-100"):
+                            with ui.column().classes("w-full items-center gap-1"):
+                                _esc = video_clip_url.replace('"', '%22')
+                                ui.html(
+                                    f'<video controls preload="auto" '
+                                    f'style="width:100%;max-width:900px;border-radius:6px;" '
+                                    f'src="{_esc}">'
+                                    f'Your browser does not support HTML5 video.</video>'
                                 )
 
                     # ── Inline drop-down: Full Agent Summary ──────────────
