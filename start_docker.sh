@@ -27,7 +27,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE="bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest"
+IMAGE="bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:hatvan_v0"
 CONTAINER="allspark-edge-server"
 PROXY="http://rb-proxy-sl.bosch.com:8080"
 

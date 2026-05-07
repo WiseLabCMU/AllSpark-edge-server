@@ -13,7 +13,7 @@ services:
         http_proxy: ${http_proxy:-}
         https_proxy: ${https_proxy:-}
         no_proxy: ${no_proxy:-}
-    image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest
+    image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:hatvan_v0
     container_name: allspark-edge-server
     # network_mode: host + security_opt label=disable are set below.
     # Ports bound directly on the host: 9080 (API), 9081 (UI), 9090 (Rerun web), 9876 (Rerun gRPC).

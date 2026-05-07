@@ -953,10 +953,24 @@ def create_page() -> None:
                 # so the chart always reflects the full 48h picture.
                 # Only rebuild when the error data has changed to avoid
                 # unnecessary redraws on every poll tick.
+                #
+                # Also include the mtime of interarrival_stats.json so the
+                # chart refreshes immediately when the kafka monitor rewrites
+                # that file (e.g. after a restart with a longer lookback),
+                # even if no new agent response has arrived yet.
+                import os as _os_cs
+                _ia_mtime = 0.0
+                for _base in anomaly_base_dirs:
+                    _ia_path = _Path(_base) / "interarrival_stats.json"
+                    try:
+                        _ia_mtime = _os_cs.path.getmtime(str(_ia_path))
+                        break
+                    except OSError:
+                        pass
                 new_chart_sig = tuple(
                     (r.get("error", ""), r.get("anomaly_time", ""))
                     for r in responses
-                )
+                ) + (_ia_mtime,)
                 if new_chart_sig != chart_sig["value"]:
                     chart_sig["value"] = new_chart_sig
                     _update_chart(responses)
@@ -1151,31 +1165,48 @@ def create_page() -> None:
                                         f"{os.path.basename(anomaly_folder)}"
                                     )
 
-                    # ── Inline video panes — one per camera channel ──────
-                    for _i, _cpath in enumerate(clip_paths):
-                        _curl = _clip_video_url(_cpath)
-                        if not _curl:
-                            continue
-                        _cname = os.path.basename(_cpath)
-                        _label = (
-                            f"▶ Video Clip  —  {_cname}"
-                            if len(clip_paths) == 1
-                            else f"▶ Camera {_i + 1}  —  {_cname}"
+                    # ── Inline video panes — up to 3 cameras side-by-side ──
+                    _valid_clips = [
+                        (_i, _cpath, _clip_video_url(_cpath))
+                        for _i, _cpath in enumerate(clip_paths)
+                        if _clip_video_url(_cpath)
+                    ]
+                    if _valid_clips:
+                        _multi = len(_valid_clips) > 1
+                        _panel_label = (
+                            f"▶ {len(_valid_clips)} Camera Clips"
+                            if _multi
+                            else f"▶ Video Clip  —  {os.path.basename(_valid_clips[0][1])}"
                         )
-                        with ui.expansion(_label, icon=None, value=False).classes(
+                        with ui.expansion(_panel_label, icon=None, value=False).classes(
                             "w-full mt-2 border-t border-gray-100"
                         ):
-                            with ui.column().classes("w-full items-center gap-1"):
-                                _esc = _curl.replace('"', '%22')
-                                ui.html(
-                                    f'<video controls preload="auto" '
-                                    f'style="width:100%;max-width:900px;border-radius:6px;" '
-                                    f'src="{_esc}">'
-                                    f'Your browser does not support HTML5 video.</video>'
-                                )
-                                ui.label(_cpath).classes(
-                                    "text-[10px] text-gray-400 font-mono"
-                                )
+                            # Rows of at most 3 cameras each
+                            _COLS = 3
+                            for _row_start in range(0, len(_valid_clips), _COLS):
+                                _row_clips = _valid_clips[_row_start:_row_start + _COLS]
+                                _col_pct = 100 // len(_row_clips)
+                                with ui.row().classes("w-full no-wrap gap-2 mt-1"):
+                                    for _i, _cpath, _curl in _row_clips:
+                                        _cname = os.path.basename(_cpath)
+                                        _esc = _curl.replace('"', '%22')
+                                        with ui.column().classes("items-center gap-0").style(
+                                            f"width:{_col_pct}%;min-width:0"
+                                        ):
+                                            if _multi:
+                                                ui.label(f"Camera {_i + 1}  —  {_cname}").classes(
+                                                    "text-xs font-semibold text-gray-600 truncate w-full"
+                                                ).tooltip(_cpath)
+                                            ui.html(
+                                                f'<video controls preload="auto" '
+                                                f'style="width:100%;border-radius:6px;" '
+                                                f'src="{_esc}">'
+                                                f'Your browser does not support HTML5 video.</video>'
+                                            )
+                                            if not _multi:
+                                                ui.label(_cpath).classes(
+                                                    "text-[10px] text-gray-400 font-mono"
+                                                )
                     # Fallback: video_clip_url from uploads/ when no NFS clips exist
                     if not clip_paths and video_clip_url:
                         with ui.expansion(

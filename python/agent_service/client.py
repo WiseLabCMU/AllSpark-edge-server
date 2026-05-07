@@ -85,10 +85,12 @@ class AgentApiClient:
                     error_message=f"Session creation failed: {err}",
                 )
 
-            # 2. Initialise session with a greeting
-            await self._initialise_session(session, session_id)
-
-            # 3. Send the actual anomaly analysis prompt
+            # 2. Send the anomaly analysis prompt directly.
+            # Note: the previous "initialise session with a greeting" step
+            # (_initialise_session) has been removed — it sent a throwaway
+            # "Hey, can you help me do some analysis?" message, waited for a
+            # full LLM round-trip (~5–15 s), then discarded the response.
+            # ADK sessions do not require a warm-up message.
             prompt = self._build_prompt(request)
             ok, raw, err = await self._send_message(session, session_id, prompt)
 

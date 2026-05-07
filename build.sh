@@ -72,7 +72,7 @@ if $PUSH; then
   fi
 
   REGISTRY="bcr2.inside.bosch.cloud"
-  IMAGE="bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:latest"
+  IMAGE="bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:hatvan_v0"
 
   echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" \
     --username "${REGISTRY_USERNAME}" \

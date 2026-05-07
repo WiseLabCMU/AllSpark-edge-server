@@ -20,6 +20,22 @@ mobile_client:
     agent_session_id: edge_session
     agent_timeout: 900
     agent_init_message: Hey, can you help me do some analysis?
+    # Max simultaneous agent calls.  2 allows parallel analysis without
+    # overwhelming the ADK SQLite session store on the shared NFS volume.
+    # Raise to 3 if the agent VM has enough RAM; lower to 1 if you see
+    # "database is locked" errors in the agent container logs.
+    agent_concurrency: 2
+  # NVR clip-wait tuning.  The edge server waits for the NVR clip to appear
+  # before forwarding the request to the agent.
+  #   clip_duration_seconds   : how long the NVR records (earliest the clip can exist).
+  #                             If the clip is already on disk (e.g. resubmit), the
+  #                             initial sleep is skipped entirely.
+  #   poll_interval_seconds   : how often to re-check after the initial sleep.
+  #   clip_wait_timeout_seconds: give up and run without video after this long.
+  nvrWaitConfig:
+    clip_duration_seconds: 120
+    poll_interval_seconds: 10
+    clip_wait_timeout_seconds: 360
   clientConfig:
     videoFormat: mp4
     audioFormat: wav
