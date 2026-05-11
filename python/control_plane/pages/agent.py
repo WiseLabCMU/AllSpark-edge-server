@@ -117,6 +117,26 @@ def _clip_video_url(clip_path: str) -> str:
     return f"/api/clip-video?path={encoded}"
 
 
+def _clip_player_iframe(clip_path: str, width: str = "100%", height: str = "280px", extra_style: str = "") -> str:
+    """Return an <iframe> HTML string embedding /video-player for *clip_path*.
+
+    The player page is chrome-free so it renders cleanly inside any container.
+    Falls back to an empty string if clip_path is blank.
+    """
+    if not clip_path:
+        return ""
+    encoded = base64.urlsafe_b64encode(clip_path.encode()).rstrip(b"=").decode()
+    title = os.path.basename(clip_path).replace('"', '')
+    style = f"width:{width};height:{height};border:none;border-radius:6px;background:#000;{extra_style}"
+    return (
+        f'<iframe src="/video-player?path={encoded}&title={quote(title, safe="")}" '
+        f'style="{style}" '
+        f'allow="autoplay" allowfullscreen '
+        f'title="{title}">'
+        f'</iframe>'
+    )
+
+
 def _extract_anomaly_line(summary: str, max_chars: int = 240) -> str:
     """
     Pick the most informative line from an agent summary to show as the
@@ -946,7 +966,7 @@ def create_page() -> None:
                     f"{len(visible)} anomal{'y' if len(visible) == 1 else 'ies'}"
                 )
                 last_updated_label.set_text(
-                    f"Last updated {datetime.now().strftime('%H:%M:%S')}"
+                    f"Last updated {datetime.now().astimezone().strftime('%H:%M:%S')}"
                 )
 
                 # Update error frequency chart with ALL responses (not filtered)
@@ -1154,16 +1174,6 @@ def create_page() -> None:
                                 ).props("dense").classes(
                                     "bg-indigo-600 text-white text-xs"
                                 )
-                            if sev["level"] != "agent_error":
-                                rerun_btn = ui.button(
-                                    "📊 Rerun Viewer",
-                                    on_click=lambda f=anomaly_folder: _launch_rerun(f),
-                                ).props("dense flat").classes("text-gray-500 text-xs")
-                                if anomaly_folder:
-                                    rerun_btn.tooltip(
-                                        f"Open per-anomaly viewer for "
-                                        f"{os.path.basename(anomaly_folder)}"
-                                    )
 
                     # ── Inline video panes — up to 3 cameras side-by-side ──
                     _valid_clips = [
@@ -1189,7 +1199,6 @@ def create_page() -> None:
                                 with ui.row().classes("w-full no-wrap gap-2 mt-1"):
                                     for _i, _cpath, _curl in _row_clips:
                                         _cname = os.path.basename(_cpath)
-                                        _esc = _curl.replace('"', '%22')
                                         with ui.column().classes("items-center gap-0").style(
                                             f"width:{_col_pct}%;min-width:0"
                                         ):
@@ -1197,12 +1206,7 @@ def create_page() -> None:
                                                 ui.label(f"Camera {_i + 1}  —  {_cname}").classes(
                                                     "text-xs font-semibold text-gray-600 truncate w-full"
                                                 ).tooltip(_cpath)
-                                            ui.html(
-                                                f'<video controls preload="auto" '
-                                                f'style="width:100%;border-radius:6px;" '
-                                                f'src="{_esc}">'
-                                                f'Your browser does not support HTML5 video.</video>'
-                                            )
+                                            ui.html(_clip_player_iframe(_cpath, width="100%", height="260px"))
                                             if not _multi:
                                                 ui.label(_cpath).classes(
                                                     "text-[10px] text-gray-400 font-mono"
@@ -1213,13 +1217,23 @@ def create_page() -> None:
                             f"▶ Video Clip  —  {clip_basename}", icon=None, value=False,
                         ).classes("w-full mt-2 border-t border-gray-100"):
                             with ui.column().classes("w-full items-center gap-1"):
-                                _esc = video_clip_url.replace('"', '%22')
-                                ui.html(
-                                    f'<video controls preload="auto" '
-                                    f'style="width:100%;max-width:900px;border-radius:6px;" '
-                                    f'src="{_esc}">'
-                                    f'Your browser does not support HTML5 video.</video>'
-                                )
+                                # video_clip_url is already a /api/clip-video?path=... URL;
+                                # extract the encoded path param for the iframe player.
+                                _encoded = video_clip_url.split("path=", 1)[-1] if "path=" in video_clip_url else ""
+                                if _encoded:
+                                    ui.html(
+                                        f'<iframe src="/video-player?path={_encoded}" '
+                                        f'style="width:100%;max-width:900px;height:360px;'
+                                        f'border:none;border-radius:6px;background:#000;" '
+                                        f'allow="autoplay" allowfullscreen></iframe>'
+                                    )
+                                else:
+                                    ui.html(
+                                        f'<video controls preload="auto" '
+                                        f'style="width:100%;max-width:900px;border-radius:6px;" '
+                                        f'src="{video_clip_url}">'
+                                        f'Your browser does not support HTML5 video.</video>'
+                                    )
 
                     # ── Inline drop-down: Full Agent Summary ──────────────
                     if summary and sev["level"] != "agent_error":
@@ -1233,7 +1247,19 @@ def create_page() -> None:
             def _open_video_dialog(video_url: str, title: str) -> None:
                 with ui.dialog() as dialog, ui.card().classes("p-2"):
                     ui.label(title).classes("font-bold text-sm mb-1")
-                    ui.video(video_url).classes("w-[640px] max-w-full")
+                    # Extract the encoded path param from the /api/clip-video URL and
+                    # embed the chrome-free /video-player page in an iframe.
+                    _enc = video_url.split("path=", 1)[-1] if "path=" in video_url else ""
+                    if _enc:
+                        _safe_title = quote(title, safe="")
+                        ui.html(
+                            f'<iframe src="/video-player?path={_enc}&title={_safe_title}" '
+                            f'style="width:640px;max-width:90vw;height:380px;'
+                            f'border:none;border-radius:6px;background:#000;" '
+                            f'allow="autoplay" allowfullscreen></iframe>'
+                        )
+                    else:
+                        ui.video(video_url).classes("w-[640px] max-w-full")
                     with ui.row().classes("justify-end w-full mt-1"):
                         ui.button("Close", on_click=dialog.close).props("flat dense")
                 dialog.open()
