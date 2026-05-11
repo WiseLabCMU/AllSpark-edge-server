@@ -543,4 +543,10 @@ def create_page():
 
             # Render initially and poll
             update_ui()
-            ui.timer(3.0, update_ui)
+            _logs_timer = ui.timer(3.0, update_ui)
+            def _safe_update_ui(_t=_logs_timer):
+                try:
+                    update_ui()
+                except RuntimeError:
+                    _t.cancel()
+            _logs_timer.callback = _safe_update_ui

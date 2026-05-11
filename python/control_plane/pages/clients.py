@@ -152,4 +152,10 @@ def create_page():
                             }
 
                     # Initialisation
-                    ui.timer(2.0, fetch_and_render_clients)
+                    _clients_timer = ui.timer(2.0, fetch_and_render_clients)
+                    async def _safe_fetch_clients(_t=_clients_timer):
+                        try:
+                            await fetch_and_render_clients()
+                        except RuntimeError:
+                            _t.cancel()
+                    _clients_timer.callback = _safe_fetch_clients

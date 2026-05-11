@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 # Import all pages to register their routes
 from pages import clients, agent, rerun_view, settings, debug, logs
@@ -127,6 +127,50 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# /video-player  — minimal iframe-embeddable video player page
+# Returns plain HTML (no NiceGUI WebSocket) so it works inside iframes.
+# ---------------------------------------------------------------------------
+@app.get('/video-player', response_class=HTMLResponse)
+async def video_player_page(path: str = "", src: str = "", title: str = "") -> HTMLResponse:
+    """Full-screen, chrome-free video player for iframe embedding."""
+    if path:
+        video_src = f"/api/clip-video?path={path}"
+        try:
+            label_text = title or base64.urlsafe_b64decode(path + "==").decode("utf-8", errors="replace").split("/")[-1]
+        except Exception:
+            label_text = title or path
+    elif src:
+        video_src = src
+        label_text = title or src.split("/")[-1]
+    else:
+        return HTMLResponse('<p style="color:#888;padding:16px;font-family:sans-serif">No video path provided.</p>')
+
+    # Escape for HTML attribute safety
+    safe_src = video_src.replace('"', '%22')
+    safe_label = label_text.replace('<', '&lt;').replace('>', '&gt;')
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body{{margin:0;padding:0;background:#000;display:flex;flex-direction:column;
+align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;}}
+video{{width:100%;max-height:100vh;display:block;object-fit:contain;}}
+.lbl{{color:#aaa;font-size:11px;padding:4px 8px;word-break:break-all;max-width:100%;}}
+</style>
+</head>
+<body>
+<video controls autoplay preload="auto" src="{safe_src}">
+Your browser does not support HTML5 video.
+</video>
+<div class="lbl">{safe_label}</div>
+</body>
+</html>"""
+    return HTMLResponse(html)
 
 
 if __name__ in {"__main__", "__mp_main__"}:

@@ -35,7 +35,7 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                 with ui.label('ADK').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as adk_status:
                     adk_tt = ui.tooltip('ADK Agentic Framework Checking...')
 
-                with ui.label('Edge'.classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as edge_status:
+                with ui.label('Edge').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as edge_status:
                     edge_tt = ui.tooltip('Edge Server API Checking...')
 
                 with ui.label('Client').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as client_status:
@@ -90,7 +90,13 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                 except Exception as e:
                     pass
 
-            ui.timer(5.0, fetch_status)
+            _status_timer = ui.timer(5.0, fetch_status)
+            async def _safe_fetch_status(_t=_status_timer):
+                try:
+                    await fetch_status()
+                except RuntimeError:
+                    _t.cancel()
+            _status_timer.callback = _safe_fetch_status
             ui.timer(0.1, fetch_status, once=True)
 
         with ui.row().classes('items-center'):

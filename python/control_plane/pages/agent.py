@@ -118,22 +118,22 @@ def _clip_video_url(clip_path: str) -> str:
 
 
 def _clip_player_iframe(clip_path: str, width: str = "100%", height: str = "280px", extra_style: str = "") -> str:
-    """Return an <iframe> HTML string embedding /video-player for *clip_path*.
+    """Return a <video> HTML string served via /api/clip-video for *clip_path*.
 
-    The player page is chrome-free so it renders cleanly inside any container.
+    Uses a direct <video> tag to avoid iframe/WebSocket issues.
     Falls back to an empty string if clip_path is blank.
     """
     if not clip_path:
         return ""
     encoded = base64.urlsafe_b64encode(clip_path.encode()).rstrip(b"=").decode()
-    title = os.path.basename(clip_path).replace('"', '')
-    style = f"width:{width};height:{height};border:none;border-radius:6px;background:#000;{extra_style}"
+    video_src = f"/api/clip-video?path={encoded}"
+    style = f"width:{width};max-height:{height};display:block;object-fit:contain;border-radius:6px;background:#000;{extra_style}"
     return (
-        f'<iframe src="/video-player?path={encoded}&title={quote(title, safe="")}" '
+        f'<video controls autoplay preload="auto" '
         f'style="{style}" '
-        f'allow="autoplay" allowfullscreen '
-        f'title="{title}">'
-        f'</iframe>'
+        f'src="{video_src}">'
+        f'Your browser does not support HTML5 video.'
+        f'</video>'
     )
 
 
@@ -1217,23 +1217,13 @@ def create_page() -> None:
                             f"▶ Video Clip  —  {clip_basename}", icon=None, value=False,
                         ).classes("w-full mt-2 border-t border-gray-100"):
                             with ui.column().classes("w-full items-center gap-1"):
-                                # video_clip_url is already a /api/clip-video?path=... URL;
-                                # extract the encoded path param for the iframe player.
-                                _encoded = video_clip_url.split("path=", 1)[-1] if "path=" in video_clip_url else ""
-                                if _encoded:
-                                    ui.html(
-                                        f'<iframe src="/video-player?path={_encoded}" '
-                                        f'style="width:100%;max-width:900px;height:360px;'
-                                        f'border:none;border-radius:6px;background:#000;" '
-                                        f'allow="autoplay" allowfullscreen></iframe>'
-                                    )
-                                else:
-                                    ui.html(
-                                        f'<video controls preload="auto" '
-                                        f'style="width:100%;max-width:900px;border-radius:6px;" '
-                                        f'src="{video_clip_url}">'
-                                        f'Your browser does not support HTML5 video.</video>'
-                                    )
+                                ui.html(
+                                    f'<video controls autoplay preload="auto" '
+                                    f'style="width:100%;max-width:900px;max-height:360px;'
+                                    f'display:block;object-fit:contain;border-radius:6px;background:#000;" '
+                                    f'src="{video_clip_url}">'
+                                    f'Your browser does not support HTML5 video.</video>'
+                                )
 
                     # ── Inline drop-down: Full Agent Summary ──────────────
                     if summary and sev["level"] != "agent_error":
@@ -1247,19 +1237,13 @@ def create_page() -> None:
             def _open_video_dialog(video_url: str, title: str) -> None:
                 with ui.dialog() as dialog, ui.card().classes("p-2"):
                     ui.label(title).classes("font-bold text-sm mb-1")
-                    # Extract the encoded path param from the /api/clip-video URL and
-                    # embed the chrome-free /video-player page in an iframe.
-                    _enc = video_url.split("path=", 1)[-1] if "path=" in video_url else ""
-                    if _enc:
-                        _safe_title = quote(title, safe="")
-                        ui.html(
-                            f'<iframe src="/video-player?path={_enc}&title={_safe_title}" '
-                            f'style="width:640px;max-width:90vw;height:380px;'
-                            f'border:none;border-radius:6px;background:#000;" '
-                            f'allow="autoplay" allowfullscreen></iframe>'
-                        )
-                    else:
-                        ui.video(video_url).classes("w-[640px] max-w-full")
+                    ui.html(
+                        f'<video controls autoplay preload="auto" '
+                        f'style="width:640px;max-width:90vw;max-height:380px;'
+                        f'display:block;object-fit:contain;border-radius:6px;background:#000;" '
+                        f'src="{video_url}">'
+                        f'Your browser does not support HTML5 video.</video>'
+                    )
                     with ui.row().classes("justify-end w-full mt-1"):
                         ui.button("Close", on_click=dialog.close).props("flat dense")
                 dialog.open()
@@ -1324,7 +1308,13 @@ def create_page() -> None:
             severity_filter.on_value_change(_on_filter_change)
             since_restart_toggle.on_value_change(_on_filter_change)
             refresh_btn.on_click(_refresh_responses)
-            ui.timer(_POLL_INTERVAL_SEC, _refresh_responses)
+            _agent_timer = ui.timer(_POLL_INTERVAL_SEC, _refresh_responses)
+            async def _safe_refresh(_t=_agent_timer):
+                try:
+                    await _refresh_responses()
+                except RuntimeError:
+                    _t.cancel()
+            _agent_timer.callback = _safe_refresh
             ui.timer(0.1, _refresh_responses, once=True)
 
 
