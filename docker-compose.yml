@@ -13,7 +13,7 @@ services:
         http_proxy: ${http_proxy:-}
         https_proxy: ${https_proxy:-}
         no_proxy: ${no_proxy:-}
-    image: bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:hatvan_v0
+    image: ${IMAGE_TAG_EDGE:-bcr2.inside.bosch.cloud/spf-ict/ict412_allspark-edge-server:hatvan_v1}
     container_name: allspark-edge-server
     # network_mode: host + security_opt label=disable are set below.
     # Ports bound directly on the host: 9080 (API), 9081 (UI), 9090 (Rerun web), 9876 (Rerun gRPC).
@@ -21,25 +21,25 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
-      # config.yaml is deployed by build.sh --deploy alongside docker-compose.yml.
-      # On the remote machine it lives at ~/allspark-edge/config.yaml.
-      - ./config.yaml:/app/python/config.yaml:ro
-      # Shared NFS folders — same container-internal path used by all 3 containers.
-      # good_reference_videos/ and Anomaly_*/ subfolders live here.
-      - /net/htvvm662/fs0/anomaly_events:/net/htvvm662/fs0/anomaly_events:rw
+      # config.yaml — set EDGE_CONFIG_YAML in .env to override (default: ./python/config.yaml for dev).
+      - ${EDGE_CONFIG_YAML:-./python/config.yaml}:/app/python/config.yaml:ro
+      # Shared anomaly data folder. Set ANOMALY_DATA_DIR in .env.
+      # Remote: /net/htvvm662/fs0/anomaly_events  Local: ~/allspark/anomaly_data
+      - ${ANOMALY_DATA_DIR:-./data/anomaly_events}:/net/htvvm662/fs0/anomaly_events:rw
     environment:
       - PYTHONUNBUFFERED=1
-      # No-proxy runtime: comment out the proxy vars below if the container
-      # has direct internet access (e.g. cloud VM, local dev without Cntlm).
-      - http_proxy=http://rb-proxy-sl.bosch.com:8080
-      - https_proxy=http://rb-proxy-sl.bosch.com:8080
-      - HTTP_PROXY=http://rb-proxy-sl.bosch.com:8080
-      - HTTPS_PROXY=http://rb-proxy-sl.bosch.com:8080
-      # Bypass proxy for intra-host calls (agent is at localhost:8000 via host network).
+      - TZ=Europe/Budapest
+      # Proxy — RUNTIME_HTTP_PROXY is set by build_push_hatvan_containers.sh.
+      # --proxy=remote → rb-proxy-sl (plant VM); --proxy=local → rb-proxy-de (dev).
+      - http_proxy=${RUNTIME_HTTP_PROXY:-${HTTP_PROXY:-}}
+      - https_proxy=${RUNTIME_HTTPS_PROXY:-${HTTPS_PROXY:-}}
+      - HTTP_PROXY=${RUNTIME_HTTP_PROXY:-${HTTP_PROXY:-}}
+      - HTTPS_PROXY=${RUNTIME_HTTPS_PROXY:-${HTTPS_PROXY:-}}
       - NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     network_mode: host
     security_opt:
       - label=disable
-    restart: unless-stopped
+    # RESTART_POLICY: unless-stopped (remote) or no (local dev). Set in .env.
+    restart: ${RESTART_POLICY:-no}
 

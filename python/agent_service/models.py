@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 @dataclass
@@ -21,9 +21,8 @@ class AnomalyRequest:
         anomaly_time: ISO-8601 timestamp string of when the anomaly occurred.
         clip_start_time: ISO-8601 timestamp string of when the clip started.
         clip_start_timestamp: Epoch-millisecond timestamp of clip start.
-        error: Error message or label that triggered the anomaly.
-        expected_topic: MQTT topic that was expected but missed.
-        mqtt_clip_messages: MQTT/Kafka messages captured around the anomaly window.
+        error: Composite error detail string (code, text, duration, machine).
+        error_description: Human-readable description of the error code.
         video_storage_path: Root path under which video chunks live.
         data_source: Source of anomaly data messages ("mqtt" or "kafka").
         anomaly_folder: Path to the pre-existing anomaly folder (e.g.
@@ -39,8 +38,7 @@ class AnomalyRequest:
     clip_start_time: str = ""
     clip_start_timestamp: str = ""
     error: str = "N/A"
-    expected_topic: str = "N/A"
-    mqtt_clip_messages: List[Dict[str, Any]] = field(default_factory=list)
+    error_description: str = ""
     video_storage_path: str = ""
     data_source: str = "mqtt"
     anomaly_folder: str = ""

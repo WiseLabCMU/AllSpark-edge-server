@@ -3,6 +3,7 @@ import json
 import yaml
 import logging
 import os
+from pathlib import Path
 import socket
 import ssl
 import sys
@@ -130,8 +131,19 @@ def load_config():
 
     print(f"Loaded config from {config_path}")
 
+    # Environment variable overrides (set via .env / docker-compose)
+    _anomaly_dir = os.environ.get("ANOMALY_DATA_DIR", "").strip()
+    if _anomaly_dir:
+        config["anomalyEventDirs"] = [_anomaly_dir]
+    _agent_url = os.environ.get("AGENT_URL", "").strip()
+    if _agent_url:
+        config.setdefault("agentConfig", {})["agent_url"] = _agent_url
+
     # Initialise agent singletons
-    _agent_client = AgentApiClient(config.get("agentConfig", {}))
+    _agent_client = AgentApiClient(
+        config.get("agentConfig", {}),
+        anomaly_event_dirs=config.get("anomalyEventDirs", []),
+    )
     # Limit concurrent agent calls.  agent_concurrency=2 allows two anomalies
     # to be analysed in parallel — fast enough to drain historical replay without
     # hammering the ADK SQLite session store.
@@ -211,9 +223,8 @@ async def handle_agent_analyze(request):
         anomaly_time       (str, required)  – ISO-8601 anomaly timestamp
         clip_start_time    (str, optional)
         clip_start_timestamp (str, optional)
-        error              (str, optional)
-        expected_topic     (str, optional)
-        mqtt_clip_messages (list, optional)
+        error              (str, optional)  – composite error detail string
+        error_description  (str, optional)  – human-readable error code description
         video_storage_path (str, optional)
         extra_metadata     (dict, optional)
     """
@@ -251,8 +262,7 @@ async def handle_agent_analyze(request):
         clip_start_time=body.get("clip_start_time", ""),
         clip_start_timestamp=str(body.get("clip_start_timestamp", "")),
         error=body.get("error", "N/A"),
-        expected_topic=body.get("expected_topic", "N/A"),
-        mqtt_clip_messages=body.get("mqtt_clip_messages", []),
+        error_description=body.get("error_description", ""),
         video_storage_path=body.get("video_storage_path", ""),
         data_source=body.get("data_source", "mqtt"),
         anomaly_folder=body.get("anomaly_folder", ""),

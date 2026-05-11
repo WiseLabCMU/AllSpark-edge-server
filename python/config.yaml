@@ -24,7 +24,7 @@ mobile_client:
     # overwhelming the ADK SQLite session store on the shared NFS volume.
     # Raise to 3 if the agent VM has enough RAM; lower to 1 if you see
     # "database is locked" errors in the agent container logs.
-    agent_concurrency: 2
+    agent_concurrency: 1
   # NVR clip-wait tuning.  The edge server waits for the NVR clip to appear
   # before forwarding the request to the agent.
   #   clip_duration_seconds   : how long the NVR records (earliest the clip can exist).
@@ -33,9 +33,9 @@ mobile_client:
   #   poll_interval_seconds   : how often to re-check after the initial sleep.
   #   clip_wait_timeout_seconds: give up and run without video after this long.
   nvrWaitConfig:
-    clip_duration_seconds: 120
-    poll_interval_seconds: 10
-    clip_wait_timeout_seconds: 360
+    clip_duration_seconds: 5
+    poll_interval_seconds: 5
+    clip_wait_timeout_seconds: 15
   clientConfig:
     videoFormat: mp4
     audioFormat: wav

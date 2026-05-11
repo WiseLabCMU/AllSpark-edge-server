@@ -301,7 +301,7 @@ class AnomalyResponseStore:
         if req_path.exists():
             try:
                 req_data = json.loads(req_path.read_text(encoding="utf-8"))
-                for key in ("error", "expected_topic", "clip_path", "data_source"):
+                for key in ("error", "error_description", "clip_path", "data_source"):
                     val = req_data.get(key)
                     if val:
                         out[key] = val

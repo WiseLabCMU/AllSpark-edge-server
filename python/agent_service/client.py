@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 
@@ -46,7 +46,7 @@ class AgentApiClient:
     # Per-ID endpoint for session lookup
     _SESSION_ID_PATH_TPL = "/apps/{app}/users/{uid}/sessions/{sid}"
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any], anomaly_event_dirs: Optional[List[str]] = None) -> None:
         self._agent_url: str = config.get("agent_url", "http://localhost:8000/run")
         self._app_name: str = config.get("agent_app_name", "allspark_agent")
         self._user_id: str = config.get("agent_user_id", "user")
@@ -57,6 +57,12 @@ class AgentApiClient:
         )
         # Derive base URL (strip /run suffix if present)
         self._base_url: str = re.sub(r"/run$", "", self._agent_url.rstrip("/"))
+        # Reference-video root: first configured anomaly event dir + subpath
+        self._reference_videos_path: Optional[str] = (
+            f"{anomaly_event_dirs[0].rstrip('/')}/good_reference_videos"
+            if anomaly_event_dirs
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -304,8 +310,7 @@ class AgentApiClient:
             "new_message": {"role": "user", "parts": [{"text": message}]},
         }
 
-    @staticmethod
-    def _build_prompt(request: AnomalyRequest) -> str:
+    def _build_prompt(self, request: AnomalyRequest) -> str:
         """
         Build the natural-language prompt sent to the orchestrator agent.
 
@@ -356,14 +361,7 @@ class AgentApiClient:
 
         # --- Data-source label ---
         data_source = getattr(request, "data_source", "mqtt") or "mqtt"
-        if data_source.lower() == "kafka":
-            messages_label = "Kafka anomaly messages"
-            messages_section_title = "Kafka Messages captured around the anomaly"
-        else:
-            messages_label = "MQTT messages"
-            messages_section_title = "MQTT Messages captured around the anomaly"
-
-        messages_str = json.dumps(request.mqtt_clip_messages, indent=2)
+        messages_label = "Kafka anomaly messages" if data_source.lower() == "kafka" else "MQTT messages"
 
         if clip_ref is None:
             video_dir = os.path.join(request.anomaly_folder, "video_anomaly_data")
@@ -390,16 +388,18 @@ class AgentApiClient:
             f"- Clip Start Time     : {request.clip_start_time}\n"
             f"- Clip Start Timestamp: {request.clip_start_timestamp}\n"
             f"- Error Detected      : {request.error}\n"
-            f"- Expected Topic      : {request.expected_topic}\n"
-            f"- Anomaly Folder      : {request.anomaly_folder}\n"
+            + (f"- Error Description   : {request.error_description}\n" if request.error_description else "")
+            + f"- Anomaly Folder      : {request.anomaly_folder}\n"
             f"- Log Path            : {request.log_path}\n\n"
-            f"## {messages_section_title}\n"
-            f"{messages_str}\n\n"
             + task_section +
-            f"Reference videos for each camera channel are in "
-            f"/net/htvvm662/fs0/anomaly_events/good_reference_videos/ and are selected "
-            f"automatically by channel prefix.\n\n"
-            f"After analysis:\n"
+            (
+                f"Reference videos for each camera channel are in "
+                f"{self._reference_videos_path}/ and are selected "
+                f"automatically by channel prefix.\n\n"
+                if self._reference_videos_path
+                else ""
+            )
+            + f"After analysis:\n"
             f"1. Describe what is happening in the video during the anomaly period.\n"
             f"2. Cross-reference the {messages_label} to understand the operational context.\n"
             f"3. Provide insights on what likely caused the anomaly.\n"

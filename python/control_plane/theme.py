@@ -24,8 +24,6 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
     agent_url = mc_cfg.get('agentConfig', {}).get('agent_url', 'http://localhost:8000/run')
 
     cp_cfg = config.get('control_plane', {})
-    rerun_host = cp_cfg.get('rerunHost', '127.0.0.1')
-    rerun_port = cp_cfg.get('rerunPort', 9090)
 
     with ui.header().classes('justify-between items-center bg-blue-grey-9'):
         with ui.row().classes('items-center'):
@@ -37,10 +35,7 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                 with ui.label('ADK').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as adk_status:
                     adk_tt = ui.tooltip('ADK Agentic Framework Checking...')
 
-                with ui.label('Rerun').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as rerun_status:
-                    rerun_tt = ui.tooltip('Rerun Data Plane Scrubber Checking...')
-
-                with ui.label('Edge').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as edge_status:
+                with ui.label('Edge'.classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as edge_status:
                     edge_tt = ui.tooltip('Edge Server API Checking...')
 
                 with ui.label('Client').classes('px-2 py-0.5 bg-gray-500 rounded text-white text-xs font-bold cursor-help') as client_status:
@@ -92,17 +87,6 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                             adk_status.classes(replace='px-2 py-0.5 bg-red-600 rounded text-white text-xs font-bold cursor-help')
                             adk_tt.set_text(f"ADK Agentic Framework Offline at {agent_p_scheme}://{agent_p_host}:{agent_p_port}")
 
-                        # 3. Rerun Data Plane Check
-                        try:
-                            _, writer = await asyncio.wait_for(asyncio.open_connection(rerun_host, rerun_port), timeout=2.0)
-                            writer.close()
-                            await writer.wait_closed()
-                            rerun_status.classes(replace='px-2 py-0.5 bg-green-600 rounded text-white text-xs font-bold cursor-help')
-                            rerun_tt.set_text(f"Rerun Data Plane Scrubber Online at tcp://{rerun_host}:{rerun_port}")
-                        except Exception:
-                            rerun_status.classes(replace='px-2 py-0.5 bg-red-600 rounded text-white text-xs font-bold cursor-help')
-                            rerun_tt.set_text(f"Rerun Data Plane Scrubber Offline at tcp://{rerun_host}:{rerun_port}")
-
                 except Exception as e:
                     pass
 
@@ -114,7 +98,6 @@ def menu(navtitle: str, full_width: bool = False, hide_title: bool = False):
                 ('Agent', '/agent', 'Agent'),
                 ('Clients', '/clients', 'Client'),
                 ('Logs', '/logs', 'Log'),
-                ('Rerun', '/rerun', 'Rerun'),
                 ('Settings', '/settings', 'Setting'),
                 ('Debug', '/debug', 'Debug')
             ]
