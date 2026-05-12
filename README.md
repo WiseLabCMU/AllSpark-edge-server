@@ -1,5 +1,7 @@
 # AllSpark Edge Server
 
+**CAUTION: This repo is archived and has migrated to https://github.boschdevcloud.com/Reliable-Distributed-Systems/allspark-edge-server.**
+
 ![Mobile Demo](docs/allspark-mobile-demo.gif)
 
 [1080p HD Demo](docs/allspark-mobile-demo-1080p.mp4)
