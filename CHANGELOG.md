@@ -1,6 +1,21 @@
 # Changelog
 
 
+## [0.6.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.5.0...v0.6.0) (2026-04-27)
+
+
+### Features
+
+* add client config for audio/depth/pose ([f65465e](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/f65465e5fce9fab5856ee0999358632986176538))
+* **anomaly:** enhance anomaly handling with data source and folder options ([602c2de](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/602c2de3f40bd6c9e7a02dfbc87e3674f8ef3651))
+* **docker:** add Docker support with Dockerfile and docker-compose.yml; include .dockerignore ([094028a](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/094028ae51263e5de623d43531bc11e519944221))
+* **ui:** enhance UI to support the changes suggested for a dashboard ([667c6f4](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/667c6f45566cdbdaef3e03f105c9283a1cd5da73))
+
+
+### Bug Fixes
+
+* errors on agent/debug pages loading config sections ([503490e](https://github.com/WiseLabCMU/AllSpark-edge-server/commit/503490e7667fc99d9860d1208ed09b0e862d9c19))
+
 ## [0.5.0](https://github.com/WiseLabCMU/AllSpark-edge-server/compare/v0.4.0...v0.5.0) (2026-04-21)
 
 
